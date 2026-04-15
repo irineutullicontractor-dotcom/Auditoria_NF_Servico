@@ -5,13 +5,14 @@ import io
 # Configuração da página
 st.set_page_config(page_title="Auditoria Master: Funil de Colunas", layout="wide")
 
-st.title("📊 Auditoria Master: Fluxo de Dados Consolidado")
+st.title("📊 Auditoria Interna NF: Fluxo de Dados Consolidado")
 st.markdown("""
 ### Instruções de uso:
-1. Carregue o relatório de **NFs**.
+1. Carregue o relatório de **NFs** - : Fornecido a cada 10 dias no servidor.
 2. Carregue o **Cadastro de Fornecedores**.
-3. Carregue o relatório do **Painel**.
-4. Carregue o relatório **Bruto de Contratos** (O sistema fará a limpeza automática).
+3. Carregue o relatório do **Painel** - Home/Suprimentos/Compras/Painel de Compras.
+2. Carregue o relatório de **Pedidos** - Home/Suprimentos/Relatórios/Pedidos de compra/Relação de Pedidos de Compra.
+4. Carregue o relatório de **Contratos**.
 """)
 
 # --- UPLOAD DOS 5 FICHEIROS ---
@@ -21,8 +22,8 @@ with col1:
     file_forn = st.file_uploader("2. Cadastro de Fornecedores", type=['xlsx', 'csv'])
     file_painel = st.file_uploader("3. Relatório Painel", type=['xlsx', 'csv'])
 with col2:
-    file_relacao = st.file_uploader("4. Relatório Pedidos (Oficina)", type=['xlsx', 'csv'])
-    file_contrato = st.file_uploader("5. Relatório Contrato (BRUTO)", type=['xlsx', 'csv'])
+    file_relacao = st.file_uploader("4. Relatório Pedidos", type=['xlsx', 'csv'])
+    file_contrato = st.file_uploader("5. Relatório Contrato", type=['xlsx', 'csv'])
 
 def carregar(file, header=0):
     if file is None: return None
