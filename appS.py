@@ -88,9 +88,32 @@ if st.button("🚀 Processar Fluxo Consolidado"):
         df_ct_limpo = pd.DataFrame(registros_ct).dropna(how='all')
         df_ct_limpo['CNPJ'] = df_ct_limpo['CNPJ'].apply(limpar_cnpj)
 
+       # --- PADRONIZAÇÕES ---
+        def limpar_cnpj(v):
+            if pd.isna(v): return ""
+            num = "".join(filter(str.isdigit, str(v)))
+            return num.zfill(14) if len(num) > 11 else num.zfill(11)
+
+        def limpar_cod(v):
+            if pd.isna(v): return ""
+            # Transforma em string, remove o .0 se for float, limpa espaços e zeros à esquerda
+            return str(v).split('.')[0].strip().lstrip('0')
+
+        def extrair_nf(v):
+            if pd.isna(v) or v == "": return ""
+            return "".join(filter(str.isdigit, str(v).split('/')[-1])).strip()
+
+        # Aplicação das limpezas com tratamento de erro
+        df_nf[NF_CNPJ] = df_nf[NF_CNPJ].apply(limpar_cnpj)
+        df_nf['nf_limpa'] = df_nf[NF_NUMERO].astype(str).str.strip()
+        df_forn[FORN_CNPJ] = df_forn[FORN_CNPJ].apply(limpar_cnpj)
+        df_forn[FORN_COD] = df_forn[FORN_COD].apply(limpar_cod)
+        df_forn[FORN_CRED] = df_forn[FORN_CRED].str.strip().str.upper()
+
         # =================================================================
         # ABA 1: PAINEL
         # =================================================================
+        # (Mantém o código anterior da Aba 1 aqui...)
         df_painel[PED_FORN_PAINEL] = df_painel[PED_FORN_PAINEL].str.strip().str.upper()
         df_painel['nf_extraida'] = df_painel[PED_NF_REF].apply(extrair_nf)
         painel_com_cnpj = pd.merge(df_painel, df_forn[[FORN_CRED, FORN_CNPJ]], left_on=PED_FORN_PAINEL, right_on=FORN_CRED, how='left')
@@ -98,32 +121,28 @@ if st.button("🚀 Processar Fluxo Consolidado"):
         df_nf['chave'] = df_nf[NF_CNPJ] + "_" + df_nf['nf_limpa']
         painel_com_cnpj['chave'] = painel_com_cnpj[FORN_CNPJ] + "_" + painel_com_cnpj['nf_extraida']
         
-        # Match exato (Lançadas)
         nfs_lancadas = df_nf[df_nf['chave'].isin(painel_com_cnpj['chave'])]['nf_limpa'].unique()
-        # CNPJs com qualquer histórico no painel
         cnpjs_com_painel = painel_com_cnpj[FORN_CNPJ].unique()
 
         resumo_painel = df_nf.copy()
-        def status_painel(r):
-            if r['nf_limpa'] in nfs_lancadas: return "✅ NF Lançada"
-            if r[NF_CNPJ] in cnpjs_com_painel: return "⚠️ Para Verificação"
-            return "❌ Sem Histórico"
-        
-        resumo_painel['Status'] = resumo_painel.apply(status_painel, axis=1)
-        resumo_painel = resumo_painel[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, NF_VALOR, 'Status']]
+        resumo_painel['Status'] = resumo_painel.apply(lambda r: "✅ NF Lançada" if r['nf_limpa'] in nfs_lancadas else ("⚠️ Para Verificação" if r[NF_CNPJ] in cnpjs_com_painel else "❌ Sem Histórico"), axis=1)
 
         # =================================================================
-        # ABA 2: PEDIDOS (HERANÇA DO PAINEL)
+        # ABA 2: PEDIDOS (CORREÇÃO DO ERRO AQUI)
         # =================================================================
-        # Identificar CNPJs com histórico na Oficina
-        df_relacao[PED_FORN_REL] = df_relacao[PED_FORN_REL].astype(str).str.split('.').str[0].str.strip().lstrip('0')
-        forn_com_cod = pd.merge(df_relacao, df_forn[[FORN_COD, FORN_CNPJ]], left_on=PED_FORN_REL, right_on=FORN_COD, how='left')
-        cnpjs_com_oficina = forn_com_cod[FORN_CNPJ].unique()
+        # Limpamos o código do fornecedor no arquivo de Relação/Oficina
+        if PED_FORN_REL in df_relacao.columns:
+            df_relacao[PED_FORN_REL] = df_relacao[PED_FORN_REL].apply(limpar_cod)
+            
+            # Cruzamento com fornecedores para pegar o CNPJ
+            forn_com_cod = pd.merge(df_relacao, df_forn[[FORN_COD, FORN_CNPJ]], left_on=PED_FORN_REL, right_on=FORN_COD, how='left')
+            cnpjs_com_oficina = forn_com_cod[FORN_CNPJ].dropna().unique()
+        else:
+            cnpjs_com_oficina = []
 
         resumo_pedidos = resumo_painel.copy()
         def status_pedidos(r):
             if r['Status'] == "✅ NF Lançada": return "✅ Resolvido Painel"
-            # Se já era verificação no painel ou é novo na oficina, mantém/vira verificação
             if r['Status'] == "⚠️ Para Verificação" or r[NF_CNPJ] in cnpjs_com_oficina:
                 return "⚠️ Para Verificação"
             return "❌ Sem Histórico"
