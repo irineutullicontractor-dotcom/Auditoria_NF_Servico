@@ -6,6 +6,13 @@ import io
 st.set_page_config(page_title="Auditoria Master: Funil de Colunas", layout="wide")
 
 st.title("📊 Auditoria Master: Fluxo de Dados Consolidado")
+st.markdown("""
+### Instruções de uso:
+1. Carregue o relatório de **NFs**.
+2. Carregue o **Cadastro de Fornecedores**.
+3. Carregue o relatório do **Painel**.
+4. Carregue o relatório **Bruto de Contratos** (O sistema fará a limpeza automática).
+""")
 
 # --- UPLOAD DOS 5 FICHEIROS ---
 col1, col2 = st.columns(2)
