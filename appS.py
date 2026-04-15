@@ -31,42 +31,52 @@ def carregar(file, header=0):
     if file.name.endswith('.csv'): return pd.read_csv(file)
     return pd.read_excel(file, header=header)
 
-# --- FUNÇÃO DE TRANSFORMAÇÃO DE CREDORES (BRUTO PARA LIMPO) ---
+# --- FUNÇÃO ROBUSTA DE TRANSFORMAÇÃO DE CREDORES ---
 def transformar_credor_limpo(df_bruto):
-    # Se já tiver a coluna 'Cód. Fornecedor', o arquivo já está no padrão limpo
-    if "Cód. Fornecedor" in df_bruto.columns:
+    # 1. Verifica se já está no formato limpo (misto) pelas colunas
+    if "Cód. Fornecedor" in df_bruto.columns and "Credor" in df_bruto.columns:
         return df_bruto
     
-    # Localiza o cabeçalho real no arquivo bruto (procura a linha que contém 'Credor')
+    # 2. Verifica se a primeira linha contém os cabeçalhos (caso o header=None tenha sido usado)
+    if not df_bruto.empty:
+        first_row = [str(x).strip() for x in df_bruto.iloc[0].values]
+        if "Cód. Fornecedor" in first_row:
+            df_ajustado = df_bruto.iloc[1:].copy()
+            df_ajustado.columns = first_row
+            return df_ajustado
+
+    # 3. Formato Bruto: Procura a linha que contém "Credor" e "CNPJ/CPF"
     for i in range(len(df_bruto)):
-        # Verifica se a palavra 'Credor' está em alguma célula da linha
-        if 'Credor' in df_bruto.iloc[i].astype(str).values:
-            # Pega os dados a partir da linha seguinte ao cabeçalho encontrado
-            df_limpo = df_bruto.iloc[i+1:].copy()
-            df_limpo.columns = df_bruto.iloc[i].values
+        row_values = [str(x).strip() for x in df_bruto.iloc[i].values]
+        if 'Credor' in row_values and 'CNPJ/CPF' in row_values:
+            df_header = df_bruto.iloc[i+1:].copy()
+            df_header.columns = [str(c).strip() for c in df_bruto.iloc[i].values]
             
-            # Remove colunas vazias (Unamed)
-            df_limpo = df_limpo.loc[:, df_limpo.columns.notna()]
+            # Remove colunas fantasmas (nan)
+            df_header = df_header.loc[:, df_header.columns.notna() & (df_header.columns != 'nan')]
             
-            # Padroniza nomes de colunas
-            df_limpo = df_limpo.rename(columns={'Credor': 'Credor', 'CNPJ/CPF': 'CNPJCPF'})
+            # Função para separar "1 - Empresa" em ("1", "Empresa")
+            def split_safe(val):
+                s = str(val).strip()
+                if s == "" or s == "nan": return "", ""
+                if " - " in s:
+                    parts = s.split(" - ")
+                    return parts[0].strip(), " - ".join(parts[1:]).strip()
+                return "", s
+
+            # Criação das colunas idênticas ao arquivo "misto"
+            res_split = df_header['Credor'].apply(split_safe)
+            df_header['Cód. Fornecedor'] = res_split.apply(lambda x: x[0])
+            df_header['Fornecedor'] = res_split.apply(lambda x: x[1])
+            df_header = df_header.rename(columns={'CNPJ/CPF': 'CNPJCPF'})
             
-            # --- RECONSTRUÇÃO DAS COLUNAS CONFORME MODELO MISTO ---
-            # 1. 'Credor' original é mantido.
-            # 2. 'Cód. Fornecedor': Extrai o número antes do " - "
-            df_limpo['Cód. Fornecedor'] = df_limpo['Credor'].astype(str).str.split(' - ').str[0].str.strip()
+            # Define a ordem exata das colunas do arquivo misto
+            cols_misto = ['Cód. Fornecedor', 'Fornecedor', 'Credor', 'CNPJCPF']
+            df_final = df_header[[c for c in cols_misto if c in df_header.columns]].copy()
             
-            # 3. 'Fornecedor': Extrai o nome após o " - "
-            df_limpo['Fornecedor'] = df_limpo['Credor'].astype(str).str.split(' - ').str[1:].apply(lambda x: " - ".join(x)).str.strip()
-            
-            # 4. 'CNPJCPF': Já renomeado acima.
-            
-            # Reordena para ficar idêntico ao arquivo fornecedores-misto.xlsx
-            colunas_finais = ['Cód. Fornecedor', 'Fornecedor', 'Credor', 'CNPJCPF']
-            # Filtra apenas o que existe para não dar erro
-            colunas_existentes = [c for c in colunas_finais if c in df_limpo.columns]
-            
-            return df_limpo[colunas_existentes].dropna(subset=['Credor'])
+            # Remove linhas onde o Credor é inválido
+            df_final = df_final[df_final['Credor'].astype(str).str.strip().str.lower() != 'nan']
+            return df_final.dropna(subset=['Credor'])
             
     return df_bruto
 
@@ -74,14 +84,14 @@ if st.button("🚀 Processar Auditoria"):
     if not all([file_nf, file_forn, file_painel, file_relacao, file_contrato]):
         st.error("Por favor, carregue os 5 arquivos.")
     else:
-        # Carregamento (usando header=None para os que precisam de tratamento manual)
+        # Carregamento (Credores e Contratos carregados sem header para limpeza manual)
         df_nf = carregar(file_nf)
         df_forn_raw = carregar(file_forn, header=None)
         df_painel = carregar(file_painel)
         df_relacao = carregar(file_relacao)
         df_bruto_ct = carregar(file_contrato, header=None)
 
-        # Transforma o arquivo de Credores bruto no formato Misto/Limpo automaticamente
+        # Transformação automática do Credor
         df_forn = transformar_credor_limpo(df_forn_raw)
 
         def encontrar_coluna(df, opcoes):
@@ -90,7 +100,7 @@ if st.button("🚀 Processar Auditoria"):
                 if opt in df.columns: return opt
             return None
 
-        # Mapeamentos (usando os nomes padronizados pela limpeza acima)
+        # Definição das colunas de referência
         FORN_COD, FORN_CNPJ, FORN_CRED = 'Cód. Fornecedor', 'CNPJCPF', 'Credor'
         
         NF_CNPJ = encontrar_coluna(df_nf, ['CNPJ Prestador (CNPJ)', 'Prestador (CNPJ)', 'Prestador (CNPJ / CPF)'])
@@ -101,10 +111,9 @@ if st.button("🚀 Processar Auditoria"):
         
         PED_FORN_REL = encontrar_coluna(df_relacao, ['Cód. fornecedor', 'Cód. Fornecedor'])
         PED_NUM_REL = encontrar_coluna(df_relacao, ['Nº do pedido', 'N° do Pedido'])
-        
-        PED_FORN_PAINEL, PED_NUM_PAINEL, PED_NF_REF = 'Fornecedor', 'N° do Pedido', 'N° da Nota fiscal'
+        PED_FORN_PAINEL, PED_NF_REF = 'Fornecedor', 'N° da Nota fiscal'
 
-        # Funções de Limpeza de String
+        # Funções de limpeza
         def limpar_cnpj(v):
             if pd.isna(v): return ""
             num = "".join(filter(str.isdigit, str(v)))
@@ -118,13 +127,11 @@ if st.button("🚀 Processar Auditoria"):
             if pd.isna(v) or v == "": return ""
             return "".join(filter(str.isdigit, str(v).split('/')[-1])).strip()
 
-        # Aplicando Tratamentos
+        # Aplicação das limpezas
         df_nf[NF_CNPJ] = df_nf[NF_CNPJ].apply(limpar_cnpj)
         df_nf['nf_limpa'] = df_nf[NF_NUMERO].astype(str).str.strip()
-        
         df_forn[FORN_CNPJ] = df_forn[FORN_CNPJ].apply(limpar_cnpj)
         df_forn[FORN_COD] = df_forn[FORN_COD].apply(limpar_cod)
-        # Importante: O nome do fornecedor no painel deve bater com o nome na coluna 'Credor' (que é Código - Nome)
         df_forn[FORN_CRED] = df_forn[FORN_CRED].astype(str).str.strip().str.upper()
 
         # Limpeza Contrato Bruto
@@ -146,9 +153,7 @@ if st.button("🚀 Processar Auditoria"):
         df_painel[PED_FORN_PAINEL] = df_painel[PED_FORN_PAINEL].astype(str).str.strip().str.upper()
         df_painel['nf_ref_limpa'] = df_painel[PED_NF_REF].apply(extrair_nf)
         
-        # Merge de fornecedores com Painel usando o nome completo (Credor)
         painel_com_cnpj = pd.merge(df_painel, df_forn[[FORN_CRED, FORN_CNPJ]], left_on=PED_FORN_PAINEL, right_on=FORN_CRED, how='left')
-        
         df_nf['chave'] = df_nf[NF_CNPJ] + "_" + df_nf['nf_limpa']
         painel_com_cnpj['chave_p'] = painel_com_cnpj[FORN_CNPJ] + "_" + painel_com_cnpj['nf_ref_limpa']
         
@@ -158,14 +163,8 @@ if st.button("🚀 Processar Auditoria"):
         nfs_lancadas = resumo_painel[resumo_painel['chave_p'].notna()]['nf_limpa'].unique()
         cnpjs_no_painel = painel_com_cnpj[FORN_CNPJ].unique()
 
-        def status_painel(r):
-            if pd.notna(r['chave_p']): return "✅ NF Lançada"
-            if r[NF_CNPJ] in cnpjs_no_painel: return "⚠️ Para Verificação"
-            return "❌ Sem Histórico"
-
-        resumo_painel['Status'] = resumo_painel.apply(status_painel, axis=1)
-        aba1_final = resumo_painel[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, NF_VALOR, PED_NF_REF, 'Status']]
-        aba1_final = aba1_final.rename(columns={PED_NF_REF: 'N° da Nota fiscal'})
+        resumo_painel['Status'] = resumo_painel.apply(lambda r: "✅ NF Lançada" if pd.notna(r['chave_p']) else ("⚠️ Para Verificação" if r[NF_CNPJ] in cnpjs_no_painel else "❌ Sem Histórico"), axis=1)
+        aba1_final = resumo_painel[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, NF_VALOR, PED_NF_REF, 'Status']].rename(columns={PED_NF_REF: 'N° da Nota fiscal'})
 
         # --- ABA 2: PEDIDOS ---
         df_relacao[PED_FORN_REL] = df_relacao[PED_FORN_REL].apply(limpar_cod)
@@ -181,8 +180,7 @@ if st.button("🚀 Processar Auditoria"):
             return "❌ Sem Histórico"
 
         resumo_pedidos['Status_Ped'] = resumo_pedidos.apply(status_pedidos, axis=1)
-        aba2_final = resumo_pedidos[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, NF_VALOR, PED_NF_REF, PED_NUM_REL, 'Status_Ped']]
-        aba2_final = aba2_final.rename(columns={'Status_Ped': 'Status', PED_NF_REF: 'N° da Nota fiscal', PED_NUM_REL: 'Pedido'})
+        aba2_final = resumo_pedidos[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, NF_VALOR, PED_NF_REF, PED_NUM_REL, 'Status_Ped']].rename(columns={'Status_Ped': 'Status', PED_NF_REF: 'N° da Nota fiscal', PED_NUM_REL: 'Pedido'})
 
         # --- ABA 3: CONTRATO ---
         cts_agrupados = df_ct_limpo.groupby('CNPJ')['Contrato'].apply(lambda x: ", ".join(set(x.astype(str).unique()))).reset_index()
@@ -195,8 +193,7 @@ if st.button("🚀 Processar Auditoria"):
             return r['Status_Ped']
 
         resumo_contratos['Status_CT'] = resumo_contratos.apply(status_contratos, axis=1)
-        aba3_final = resumo_contratos[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, NF_VALOR, PED_NF_REF, PED_NUM_REL, 'Contrato', 'Status_CT']]
-        aba3_final = aba3_final.rename(columns={'Status_CT': 'Status', PED_NF_REF: 'N° da Nota fiscal', PED_NUM_REL: 'Pedido'})
+        aba3_final = resumo_contratos[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, NF_VALOR, PED_NF_REF, PED_NUM_REL, 'Contrato', 'Status_CT']].rename(columns={'Status_CT': 'Status', PED_NF_REF: 'N° da Nota fiscal', PED_NUM_REL: 'Pedido'})
 
         # --- DOWNLOAD ---
         output = io.BytesIO()
@@ -205,5 +202,5 @@ if st.button("🚀 Processar Auditoria"):
             aba2_final.to_excel(writer, sheet_name='2. PEDIDOS', index=False)
             aba3_final.to_excel(writer, sheet_name='3. CONTRATO', index=False)
         
-        st.success("Relatório gerado! O arquivo de credores foi limpo e transformado no padrão misto internamente.")
+        st.success("Relatório gerado com sucesso! A limpeza dos credores foi feita automaticamente.")
         st.download_button(label="📥 Baixar Auditoria Consolidada", data=output.getvalue(), file_name="AUDITORIA_NF_SERVICO.xlsx")
