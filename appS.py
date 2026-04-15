@@ -8,11 +8,16 @@ st.set_page_config(page_title="Auditoria Master: Funil de Colunas", layout="wide
 st.title("📊 Auditoria Interna NF: Fluxo de Dados Consolidado")
 st.markdown("""
 ### Instruções de uso:
-1. Carregue o relatório de **NFs** - Fornecido a cada 10 dias no servidor.
+1. Carregue o relatório de **NFs**.
+- Fornecido a cada 10 dias no servidor.
 2. Carregue o **Cadastro de Fornecedores**.
-3. Carregue o relatório do **Painel** - Home / Suprimentos / Compras / Painel de Compras (Novo).
-2. Carregue o relatório de **Pedidos** - Home / Suprimentos / Compras / Relatórios / Pedidos de compra / Relação de Pedidos de Compra (Novo).
-4. Carregue o relatório de **Contratos** - Home / Suprimentos / Contratos e Medições / Relatórios / Contratos / Emissão de Contratos.
+- Home / Suprimentos / Compras / Relatórios / Pedidos de compra / Relação de Pedidos de Compra (Novo).
+3. Carregue o relatório do **Painel**.
+- Home / Suprimentos / Compras / Painel de Compras (Novo).
+2. Carregue o relatório de **Pedidos**.
+- Home / Suprimentos / Compras / Relatórios / Pedidos de compra / Relação de Pedidos de Compra (Novo).
+4. Carregue o relatório de **Contratos**.
+- Home / Suprimentos / Contratos e Medições / Relatórios / Contratos / Emissão de Contratos.
 """)
 
 # --- UPLOAD DOS 5 FICHEIROS ---
