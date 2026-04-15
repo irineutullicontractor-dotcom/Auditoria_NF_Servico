@@ -72,15 +72,6 @@ def extrair_nf(v):
     if pd.isna(v) or v == "": return ""
     return "".join(filter(str.isdigit, str(v).split('/')[-1])).strip()
 
-# --- INTERFACE ---
-st.title("📊 Auditoria Interna NF - Corrigida")
-
-file_nf = st.file_uploader("1. Relatório de NF's", type=['xlsx', 'csv'])
-file_forn = st.file_uploader("2. Relatório de Credores", type=['xlsx', 'csv'])
-file_painel = st.file_uploader("3. Relatório Painel", type=['xlsx', 'csv'])
-file_relacao = st.file_uploader("4. Relatório Pedidos", type=['xlsx', 'csv'])
-file_contrato = st.file_uploader("5. Relatório Contrato", type=['xlsx', 'csv'])
-
 if st.button("🚀 Processar Auditoria"):
     if all([file_nf, file_forn, file_painel, file_relacao, file_contrato]):
         # Carregamento
