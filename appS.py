@@ -181,5 +181,5 @@ if st.button("🚀 Processar Auditoria"):
             aba2_final.to_excel(writer, sheet_name='2. PEDIDOS', index=False)
             aba3_final.to_excel(writer, sheet_name='3. CONTRATO', index=False)
         
-        st.success("Relatório Corrigido e Contratos Vinculados!")
+        st.success("Relatório de NF's de Serviço Emitido com Sucesso!")
         st.download_button(label="📥 Baixar Auditoria", data=output.getvalue(), file_name="AUDITORIA_NF_SERVICO.xlsx")
