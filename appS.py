@@ -139,42 +139,43 @@ if st.button("🚀 Processar Auditoria"):
         resumo_pedidos['Status_Ped'] = resumo_pedidos.apply(status_pedidos, axis=1)
         aba2_final = resumo_pedidos[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, NF_VALOR, 'N° da Nota fiscal', 'Nº do pedido', 'Status_Ped']].rename(columns={'Status_Ped': 'Status', 'Nº do pedido': 'Pedido'})
 
-        # --- ABA 3: CONTRATO (CORRIGIDA) ---
+        # --- ABA 3: CONTRATO (CORREÇÃO FINAL DO NÚMERO DO CONTRATO) ---
         registros_ct = []
-        item_atual = {}
-        for i, row in df_bruto_ct.iterrows():
-            # Extrai colunas A, C e D
-            col_a = str(row[0]).strip() if pd.notna(row[0]) else ""
-            col_c = str(row[2]).strip() if pd.notna(row[2]) else ""
-            col_d = str(row[3]).strip() if pd.notna(row[3]) else ""
-            
-            if col_c == "Contrato":
-                if item_atual: registros_ct.append(item_atual)
-                item_atual = {'Contrato_ID': col_d, 'CNPJ_CT': None}
-            if item_atual and col_a == "CNPJ":
-                item_atual['CNPJ_CT'] = limpar_cnpj(col_d)
-                
-        if item_atual: registros_ct.append(item_atual)
+        contrato_atual = None
         
-        df_ct = pd.DataFrame(registros_ct)
-        # Agrupa contratos para o mesmo CNPJ
-        cts_agrupados = df_ct.dropna(subset=['CNPJ_CT']).groupby('CNPJ_CT')['Contrato_ID'].apply(lambda x: ", ".join(set(x.astype(str).unique()))).reset_index()
+        for i in range(len(df_bruto_ct)):
+            linha = df_bruto_ct.iloc[i]
+            col_a = str(linha[0]).strip() if pd.notna(linha[0]) else ""
+            col_c = str(linha[2]).strip() if pd.notna(linha[2]) else ""
+            col_d = str(linha[3]).strip() if pd.notna(linha[3]) else ""
+            
+            # Identifica o número do contrato
+            if "Contrato" in col_c:
+                contrato_atual = col_d
+            
+            # Quando achar o CNPJ, atrela ao último número de contrato encontrado
+            if col_a == "CNPJ" and contrato_atual:
+                cnpj_limpo = limpar_cnpj(col_d)
+                registros_ct.append({'CNPJ_CT': cnpj_limpo, 'Num_Contrato': contrato_atual})
 
-        # Merge com o resumo de pedidos
+        df_ct = pd.DataFrame(registros_ct).drop_duplicates()
+        # Agrupa caso o mesmo CNPJ tenha vários contratos
+        cts_agrupados = df_ct.groupby('CNPJ_CT')['Num_Contrato'].apply(lambda x: ", ".join(set(x.astype(str).unique()))).reset_index()
+
+        # Faz o cruzamento com o resumo anterior
         resumo_contratos = pd.merge(resumo_pedidos, cts_agrupados, left_on=NF_CNPJ, right_on='CNPJ_CT', how='left')
-        cnpjs_com_ct = set(cts_agrupados['CNPJ_CT'].unique())
-
+        
         def status_contratos(r):
             if r['chave_unica'] in chaves_lancadas_real: return "✅ Resolvido Painel"
-            if pd.notna(r['Contrato_ID']): return "📄 Vínculo Contratual"
+            if pd.notna(r['Num_Contrato']) and str(r['Num_Contrato']).strip() != "": return "📄 Vínculo Contratual"
             return r['Status_Ped']
 
         resumo_contratos['Status_CT'] = resumo_contratos.apply(status_contratos, axis=1)
         
         aba3_final = resumo_contratos[[
             NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, NF_VALOR, 
-            'N° da Nota fiscal', 'Nº do pedido', 'Contrato_ID', 'Status_CT'
-        ]].rename(columns={'Status_CT': 'Status', 'Nº do pedido': 'Pedido', 'Contrato_ID': 'Contrato'})
+            'N° da Nota fiscal', 'Nº do pedido', 'Num_Contrato', 'Status_CT'
+        ]].rename(columns={'Status_CT': 'Status', 'Nº do pedido': 'Pedido', 'Num_Contrato': 'Contrato'})
 
         # Exportação
         output = io.BytesIO()
@@ -183,5 +184,5 @@ if st.button("🚀 Processar Auditoria"):
             aba2_final.to_excel(writer, sheet_name='2. PEDIDOS', index=False)
             aba3_final.to_excel(writer, sheet_name='3. CONTRATO', index=False)
         
-        st.success("Relatório Emitido com Sucesso!")
+        st.success("Tudo pronto! Relatório de Auditoria gerado com sucesso.")
         st.download_button(label="📥 Baixar Auditoria", data=output.getvalue(), file_name="AUDITORIA_NF_SERVICO.xlsx")
