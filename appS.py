@@ -9,7 +9,7 @@ st.title("📊 Auditoria Interna NF")
 st.markdown("""
 ### Instruções de uso:
 1. Carregue o relatório de **NFs** - 1 por período.
-2. Carregue o **Cadastro de Fornecedores**.
+2. Carregue o **Cadastro de Credores**.
 3. Carregue o relatório do **Painel** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
 2. Carregue o relatório de **Pedidos** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
 4. Carregue o relatório de **Contratos** - Puxar relatório de 01/01/2020 até a data vigente.
