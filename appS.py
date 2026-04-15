@@ -6,16 +6,25 @@ import io
 st.set_page_config(page_title="Auditoria Interna NF", layout="wide")
 
 st.title("📊 Auditoria Interna NF")
+st.markdown("""
+
+### Instruções de uso:
+1. Carregue o relatório de **NF's** - 1 por período.
+2. Carregue o relatório de **Credores**.
+3. Carregue o relatório do **Painel** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
+2. Carregue o relatório de **Pedidos** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
+4. Carregue o relatório de **Contratos** - Puxar relatório de 01/01/2020 até a data vigente.
+""")
 
 # --- UPLOAD DOS 5 FICHEIROS ---
 col1, col2 = st.columns(2)
 with col1:
-    file_nf = st.file_uploader("1. Relatório de NF's", type=['xlsx', 'csv'])
-    file_forn = st.file_uploader("2. Relatório de Credores", type=['xlsx', 'csv'])
-    file_painel = st.file_uploader("3. Relatório Painel", type=['xlsx', 'csv'])
+    file_nf = st.file_uploader("1. Relatório de NF's - Fornecido a cada 10 dias no servidor.", type=['xlsx', 'csv'])
+    file_forn = st.file_uploader("2. Relatório de Credores - Home / Mais Opções / Apoio / Relatórios / Pessoas / Credores.", type=['xlsx', 'csv'])
+    file_painel = st.file_uploader("3. Relatório Painel - Home / Suprimentos / Compras / Painel de Compras (Novo).", type=['xlsx', 'csv'])
 with col2:
-    file_relacao = st.file_uploader("4. Relatório Pedidos", type=['xlsx', 'csv'])
-    file_contrato = st.file_uploader("5. Relatório Contrato", type=['xlsx', 'csv'])
+    file_relacao = st.file_uploader("4. Relatório Pedidos - Home / Suprimentos / Compras / Relatórios / Pedidos de compra / Relação de Pedidos de Compra (Novo).", type=['xlsx', 'csv'])
+    file_contrato = st.file_uploader("5. Relatório Contrato - Home / Suprimentos / Contratos e Medições / Relatórios / Contratos / Emissão de Contratos.", type=['xlsx', 'csv'])
 
 def carregar(file, header=0):
     if file is None: return None
