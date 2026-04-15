@@ -11,8 +11,8 @@ st.markdown("""
 1. Carregue o relatório de **NFs** - : Fornecido a cada 10 dias no servidor.
 2. Carregue o **Cadastro de Fornecedores**.
 3. Carregue o relatório do **Painel** - Home/Suprimentos/Compras/Painel de Compras.
-2. Carregue o relatório de **Pedidos** - Home/Suprimentos/Relatórios/Pedidos de compra/Relação de Pedidos de Compra.
-4. Carregue o relatório de **Contratos**.
+2. Carregue o relatório de **Pedidos** - Home/Suprimentos/Compras/Relatórios/Pedidos de compra/Relação de Pedidos de Compra (Novo).
+4. Carregue o relatório de **Contratos** - Home/Suprimentos/Contratos e Medições/Relatórios/Contratos/Emissão de Contratos.
 """)
 
 # --- UPLOAD DOS 5 FICHEIROS ---
