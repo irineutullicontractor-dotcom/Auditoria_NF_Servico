@@ -306,12 +306,12 @@ if st.button("🚀 Processar Auditoria"):
             'N° da Nota fiscal', 'Nº do pedido', 'Contrato_ID', 'Status_CT'
         ]].rename(columns={'Status_CT': 'Status', 'Nº do pedido': 'Pedido', 'Contrato_ID': 'Contrato'})
 
-        # --- EXPORTAÇÃO ---
+        # Exportação
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             aba1_final.to_excel(writer, sheet_name='1. PAINEL', index=False)
             aba2_final.to_excel(writer, sheet_name='2. PEDIDOS', index=False)
             aba3_final.to_excel(writer, sheet_name='3. CONTRATO', index=False)
         
-        st.success("Relatório de NF's de Serviço Emitido com Sucesso!")
+        st.success("Relatório Emitido com Sucesso!")
         st.download_button(label="📥 Baixar Auditoria", data=output.getvalue(), file_name="AUDITORIA_NF_SERVICO.xlsx")
