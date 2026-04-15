@@ -140,37 +140,46 @@ if st.button("🚀 Processar Auditoria"):
         aba2_final = resumo_pedidos[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, NF_VALOR, 'N° da Nota fiscal', 'Nº do pedido', 'Status_Ped']].rename(columns={'Status_Ped': 'Status', 'Nº do pedido': 'Pedido'})
 
         # --- ABA 3: CONTRATO ---
-        # (Lógica de contrato mantida mas agora herdando o Status_Ped corrigido)
         registros_ct = []
         item_atual = {}
         for i, row in df_bruto_ct.iterrows():
             col_a, col_c, col_d = [str(row[idx]).strip() if pd.notna(row[idx]) else "" for idx in [0, 2, 3]]
             if col_c == "Contrato":
                 if item_atual: registros_ct.append(item_atual)
-                item_atual = {'Contrato': col_d, 'CNPJ': None}
-            if item_atual and col_a == "CNPJ": item_atual['CNPJ'] = col_d
+                item_atual = {'Contrato_Num': col_d, 'CNPJ_CT': None} # Nomes claros para evitar conflito
+            if item_atual and col_a == "CNPJ": 
+                item_atual['CNPJ_CT'] = limpar_cnpj(col_d)
         if item_atual: registros_ct.append(item_atual)
+        
         df_ct = pd.DataFrame(registros_ct)
-        df_ct['CNPJ'] = df_ct['CNPJ'].apply(limpar_cnpj)
-        cts_agrupados = df_ct.groupby('CNPJ')['Contrato'].apply(lambda x: ", ".join(set(x.astype(str).unique()))).reset_index()
+        # Agrupar contratos por CNPJ para tratar casos de múltiplos contratos
+        cts_agrupados = df_ct.dropna(subset=['CNPJ_CT']).groupby('CNPJ_CT')['Contrato_Num'].apply(lambda x: ", ".join(set(x.astype(str).unique()))).reset_index()
 
-        resumo_contratos = pd.merge(resumo_pedidos, cts_agrupados, left_on=NF_CNPJ, right_on='CNPJ', how='left')
-        cnpjs_com_ct = set(cts_agrupados['CNPJ'].unique())
+        # Cruzamento final usando o CNPJ da NF com o CNPJ do contrato
+        resumo_contratos = pd.merge(resumo_pedidos, cts_agrupados, left_on=NF_CNPJ, right_on='CNPJ_CT', how='left')
+        cnpjs_com_ct = set(cts_agrupados['CNPJ_CT'].unique())
 
         def status_contratos(r):
+            # Se já está resolvido no painel, mantém o status mas agora terá o número do contrato na coluna ao lado
             if r['chave_unica'] in chaves_lancadas_real: return "✅ Resolvido Painel"
-            if r[NF_CNPJ] in cnpjs_com_ct: return "📄 Vínculo Contratual"
+            # Se tem contrato mas não está lançado
+            if pd.notna(r['Contrato_Num']) and r['Contrato_Num'] != "": return "📄 Vínculo Contratual"
             return r['Status_Ped']
 
         resumo_contratos['Status_CT'] = resumo_contratos.apply(status_contratos, axis=1)
-        aba3_final = resumo_contratos[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, NF_VALOR, 'N° da Nota fiscal', 'Nº do pedido', 'Contrato', 'Status_CT']].rename(columns={'Status_CT': 'Status', 'Nº do pedido': 'Pedido'})
+        
+        # Organização das colunas finais
+        aba3_final = resumo_contratos[[
+            NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, NF_VALOR, 
+            'N° da Nota fiscal', 'Nº do pedido', 'Contrato_Num', 'Status_CT'
+        ]].rename(columns={'Status_CT': 'Status', 'Nº do pedido': 'Pedido', 'Contrato_Num': 'Contrato'})
 
-        # Exportação
+        # --- EXPORTAÇÃO ---
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             aba1_final.to_excel(writer, sheet_name='1. PAINEL', index=False)
             aba2_final.to_excel(writer, sheet_name='2. PEDIDOS', index=False)
             aba3_final.to_excel(writer, sheet_name='3. CONTRATO', index=False)
         
-        st.success("Relatório Corrigido com Sucesso!")
+        st.success("Relatório Corrigido e Contratos Vinculados!")
         st.download_button(label="📥 Baixar Auditoria", data=output.getvalue(), file_name="AUDITORIA_NF_SERVICO.xlsx")
