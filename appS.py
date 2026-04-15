@@ -5,7 +5,7 @@ import io
 # Configuração da página
 st.set_page_config(page_title="Auditoria Master: Funil de Colunas", layout="wide")
 
-st.title("📊 Auditoria Interna NF: Fluxo de Dados Consolidado")
+st.title("📊 Auditoria Interna NF")
 st.markdown("""
 ### Instruções de uso:
 1. Carregue o relatório de **NFs** - 1 por período.
