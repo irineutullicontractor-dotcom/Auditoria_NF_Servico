@@ -3,14 +3,14 @@ import pandas as pd
 import io
 
 # Configuração da página
-st.set_page_config(page_title="Auditoria Master: Fluxo de Pendências", layout="wide")
+st.set_page_config(page_title="Auditoria Master: Fluxo Inteligente", layout="wide")
 
-st.title("📊 Auditoria Master: Fluxo Painel -> Pedidos -> Contratos")
+st.title("📊 Auditoria Master: Painel -> Pedidos -> Contratos")
 st.markdown("""
-### Como funciona o fluxo:
-- **Aba 1 (Painel):** Exibe todas as notas e tenta o match exato.
-- **Aba 2 (Pedidos):** Mostra apenas o que **não** foi lançado no Painel, tentando encontrar pedidos da oficina.
-- **Aba 3 (Contratos):** O filtro final. Mostra apenas o que **não** está no Painel nem na Oficina, tentando o vínculo por Contrato.
+### Regras do Fluxo:
+1. **Painel:** Identifica o que está lançado e o que tem histórico de pedido no painel.
+2. **Pedidos:** Herda o status do Painel e adiciona a verificação da Oficina/Pedidos.
+3. **Contrato:** Consolida tudo, mantendo os alertas anteriores e adicionando o Vínculo Contratual.
 """)
 
 # --- UPLOAD DOS 5 FICHEIROS ---
@@ -25,62 +25,58 @@ with col2:
 
 def carregar(file, header=0):
     if file is None: return None
-    if file.name.endswith('.csv'):
-        return pd.read_csv(file)
+    if file.name.endswith('.csv'): return pd.read_csv(file)
     return pd.read_excel(file, header=header)
 
-if st.button("🚀 Gerar Auditoria em Funil"):
+if st.button("🚀 Processar Fluxo Consolidado"):
     if not all([file_nf, file_forn, file_painel, file_relacao, file_contrato]):
         st.error("Por favor, carregue os 5 arquivos.")
     else:
-        # Carregamento
+        # Carregamento e Limpeza de Colunas
         df_nf = carregar(file_nf)
         df_forn = carregar(file_forn)
         df_painel = carregar(file_painel)
         df_relacao = carregar(file_relacao)
-        df_bruto_contrato = carregar(file_contrato, header=None)
+        df_bruto_ct = carregar(file_contrato, header=None)
 
-        # --- MAPEAMENTO FLEXÍVEL ---
         def encontrar_coluna(df, opcoes):
             df.columns = df.columns.str.strip()
             for opt in opcoes:
                 if opt in df.columns: return opt
             return None
 
+        # Mapeamentos
         NF_CNPJ = encontrar_coluna(df_nf, ['CNPJ Prestador (CNPJ)', 'Prestador (CNPJ)', 'Prestador (CNPJ / CPF)', 'CNPJ'])
         NF_NUMERO = encontrar_coluna(df_nf, ['Número NFS-e (nNFSe)', 'Número (nNFSe)', 'nNFSe'])
-        NF_FORN = encontrar_coluna(df_nf, ['Nome Prestador (xNome)', 'Prestador (xNome)', 'Razão Social Prestador'])
-        NF_DATA = encontrar_coluna(df_nf, ['Data/Hora Emissão DPS (dhEmi)', 'Data da Emissão (dhEmi)', 'dhEmi'])
-        NF_VALOR = encontrar_coluna(df_nf, ['Valor do Serviço (vServ) (vServ)', 'Valor Serviço (vServ)', 'vServ'])
+        NF_FORN = encontrar_coluna(df_nf, ['Nome Prestador (xNome)', 'Prestador (xNome)'])
+        NF_DATA = encontrar_coluna(df_nf, ['Data/Hora Emissão DPS (dhEmi)', 'Data da Emissão (dhEmi)'])
+        NF_VALOR = encontrar_coluna(df_nf, ['Valor do Serviço (vServ) (vServ)', 'Valor Serviço (vServ)'])
         
-        PED_FORN_REL = encontrar_coluna(df_relacao, ['Cód. fornecedor', 'Cód. Fornecedor', 'Fornecedor', 'Código'])
-        PED_NUM_REL = encontrar_coluna(df_relacao, ['Nº do pedido', 'N° do Pedido', 'Pedido', 'Número'])
+        PED_FORN_REL = encontrar_coluna(df_relacao, ['Cód. fornecedor', 'Cód. Fornecedor', 'Fornecedor'])
+        PED_NUM_REL = encontrar_coluna(df_relacao, ['Nº do pedido', 'N° do Pedido', 'Pedido'])
         
         PED_FORN_PAINEL, PED_NUM_PAINEL, PED_NF_REF = 'Fornecedor', 'N° do Pedido', 'N° da Nota fiscal'
         FORN_COD, FORN_CNPJ, FORN_CRED = 'Cód. Fornecedor', 'CNPJCPF', 'Credor'
 
-        # --- PADRONIZAÇÕES ---
+        # Funções de limpeza
         def limpar_cnpj(v):
             num = "".join(filter(str.isdigit, str(v)))
             return num.zfill(14) if len(num) > 11 else num.zfill(11)
-
-        def limpar_cod(v):
-            return str(v).split('.')[0].strip().lstrip('0')
 
         def extrair_nf(v):
             if pd.isna(v) or v == "": return ""
             return "".join(filter(str.isdigit, str(v).split('/')[-1])).strip()
 
+        # Tratamento de dados
         df_nf[NF_CNPJ] = df_nf[NF_CNPJ].apply(limpar_cnpj)
         df_nf['nf_limpa'] = df_nf[NF_NUMERO].astype(str).str.strip()
         df_forn[FORN_CNPJ] = df_forn[FORN_CNPJ].apply(limpar_cnpj)
-        df_forn[FORN_COD] = df_forn[FORN_COD].apply(limpar_cod)
         df_forn[FORN_CRED] = df_forn[FORN_CRED].str.strip().str.upper()
 
-        # Limpeza Contratos
+        # Limpeza Contrato Bruto
         registros_ct = []
         item_atual = {}
-        for i, row in df_bruto_contrato.iterrows():
+        for i, row in df_bruto_ct.iterrows():
             col_a, col_c, col_d = [str(row[idx]).strip() if pd.notna(row[idx]) else "" for idx in [0, 2, 3]]
             if col_c == "Contrato":
                 if item_atual: registros_ct.append(item_atual)
@@ -93,7 +89,7 @@ if st.button("🚀 Gerar Auditoria em Funil"):
         df_ct_limpo['CNPJ'] = df_ct_limpo['CNPJ'].apply(limpar_cnpj)
 
         # =================================================================
-        # ABA 1: PAINEL (BASE COMPLETA)
+        # ABA 1: PAINEL
         # =================================================================
         df_painel[PED_FORN_PAINEL] = df_painel[PED_FORN_PAINEL].str.strip().str.upper()
         df_painel['nf_extraida'] = df_painel[PED_NF_REF].apply(extrair_nf)
@@ -102,49 +98,59 @@ if st.button("🚀 Gerar Auditoria em Funil"):
         df_nf['chave'] = df_nf[NF_CNPJ] + "_" + df_nf['nf_limpa']
         painel_com_cnpj['chave'] = painel_com_cnpj[FORN_CNPJ] + "_" + painel_com_cnpj['nf_extraida']
         
-        match_painel = pd.merge(df_nf, painel_com_cnpj, on='chave', how='inner')
-        nfs_resolvidas_painel = match_painel['nf_limpa'].unique()
+        # Match exato (Lançadas)
+        nfs_lancadas = df_nf[df_nf['chave'].isin(painel_com_cnpj['chave'])]['nf_limpa'].unique()
+        # CNPJs com qualquer histórico no painel
+        cnpjs_com_painel = painel_com_cnpj[FORN_CNPJ].unique()
+
+        resumo_painel = df_nf.copy()
+        def status_painel(r):
+            if r['nf_limpa'] in nfs_lancadas: return "✅ NF Lançada"
+            if r[NF_CNPJ] in cnpjs_com_painel: return "⚠️ Para Verificação"
+            return "❌ Sem Histórico"
         
-        # Gerar a aba 1
-        resumo_painel = pd.merge(df_nf, painel_com_cnpj, on='chave', how='left')
-        resumo_painel['Status'] = resumo_painel.apply(lambda r: "✅ NF Lançada" if r['nf_limpa'] in nfs_resolvidas_painel else ("⚠️ Pedido Encontrado" if pd.notna(r[PED_NUM_PAINEL]) else "❌ Sem Pedido"), axis=1)
-        resumo_painel = resumo_painel[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, PED_NUM_PAINEL, NF_VALOR, 'Status']].drop_duplicates()
+        resumo_painel['Status'] = resumo_painel.apply(status_painel, axis=1)
+        resumo_painel = resumo_painel[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, NF_VALOR, 'Status']]
 
         # =================================================================
-        # ABA 2: PEDIDOS (APENAS PENDENTES DO PAINEL)
+        # ABA 2: PEDIDOS (HERANÇA DO PAINEL)
         # =================================================================
-        df_pendentes_painel = df_nf[~df_nf['nf_limpa'].isin(nfs_resolvidas_painel)].copy()
-        
-        df_relacao[PED_FORN_REL] = df_relacao[PED_FORN_REL].apply(limpar_cod)
-        rel_com_cnpj = pd.merge(df_relacao, df_forn[[FORN_COD, FORN_CNPJ]], left_on=PED_FORN_REL, right_on=FORN_COD, how='left')
-        peds_agrupados = rel_com_cnpj.groupby(FORN_CNPJ)[PED_NUM_REL].apply(lambda x: ", ".join(set(x.astype(str).unique()))).reset_index()
-        
-        resumo_pedidos = pd.merge(df_pendentes_painel, peds_agrupados, left_on=NF_CNPJ, right_on=FORN_CNPJ, how='left')
-        
-        # Notas resolvidas na Oficina
-        nfs_com_pedido_oficina = resumo_pedidos[resumo_pedidos[PED_NUM_REL].notna()]['nf_limpa'].unique()
-        
-        resumo_pedidos['Status'] = resumo_pedidos[PED_NUM_REL].apply(lambda x: "⚠️ Pendente (Oficina)" if pd.notna(x) else "❌ Sem Pedido Oficina")
-        resumo_pedidos = resumo_pedidos[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, PED_NUM_REL, NF_VALOR, 'Status']]
+        # Identificar CNPJs com histórico na Oficina
+        df_relacao[PED_FORN_REL] = df_relacao[PED_FORN_REL].astype(str).str.split('.').str[0].str.strip().lstrip('0')
+        forn_com_cod = pd.merge(df_relacao, df_forn[[FORN_COD, FORN_CNPJ]], left_on=PED_FORN_REL, right_on=FORN_COD, how='left')
+        cnpjs_com_oficina = forn_com_cod[FORN_CNPJ].unique()
+
+        resumo_pedidos = resumo_painel.copy()
+        def status_pedidos(r):
+            if r['Status'] == "✅ NF Lançada": return "✅ Resolvido Painel"
+            # Se já era verificação no painel ou é novo na oficina, mantém/vira verificação
+            if r['Status'] == "⚠️ Para Verificação" or r[NF_CNPJ] in cnpjs_com_oficina:
+                return "⚠️ Para Verificação"
+            return "❌ Sem Histórico"
+
+        resumo_pedidos['Status'] = resumo_pedidos.apply(status_pedidos, axis=1)
 
         # =================================================================
-        # ABA 3: CONTRATOS (APENAS PENDENTES DE TUDO)
+        # ABA 3: CONTRATOS (CONSOLIDAÇÃO FINAL)
         # =================================================================
-        # Pega o que não está nem no Painel nem na Oficina
-        df_pendentes_total = df_pendentes_painel[~df_pendentes_painel['nf_limpa'].isin(nfs_com_pedido_oficina)].copy()
-        
-        cts_agrupados = df_ct_limpo.groupby('CNPJ')['Contrato'].apply(lambda x: ", ".join(set(x.astype(str).unique()))).reset_index()
-        resumo_contratos = pd.merge(df_pendentes_total, cts_agrupados, left_on=NF_CNPJ, right_on='CNPJ', how='left')
-        
-        resumo_contratos['Status'] = resumo_contratos['Contrato'].apply(lambda x: "⚠️ Vínculo Contratual" if pd.notna(x) else "🚨 PENDÊNCIA CRÍTICA")
-        resumo_contratos = resumo_contratos[[NF_NUMERO, NF_CNPJ, NF_FORN, NF_DATA, 'Contrato', NF_VALOR, 'Status']]
+        cnpjs_com_contrato = df_ct_limpo['CNPJ'].unique()
+
+        resumo_contratos = resumo_pedidos.copy()
+        def status_contratos(r):
+            if r['Status'] == "✅ Resolvido Painel": return "✅ Resolvido Painel"
+            # Se tem contrato, ganha o status prioritário
+            if r[NF_CNPJ] in cnpjs_com_contrato: return "📄 Vínculo Contratual"
+            # Mantém o que veio das abas anteriores
+            return r['Status']
+
+        resumo_contratos['Status'] = resumo_contratos.apply(status_contratos, axis=1)
 
         # --- DOWNLOAD ---
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            resumo_painel.to_excel(writer, sheet_name='1. PAINEL (GERAL)', index=False)
-            resumo_pedidos.to_excel(writer, sheet_name='2. PEDIDOS (SÓ PENDENTES)', index=False)
-            resumo_contratos.to_excel(writer, sheet_name='3. CONTRATOS (FILTRO FINAL)', index=False)
+            resumo_painel.to_excel(writer, sheet_name='1. PAINEL', index=False)
+            resumo_pedidos.to_excel(writer, sheet_name='2. PEDIDOS', index=False)
+            resumo_contratos.to_excel(writer, sheet_name='3. CONTRATO', index=False)
         
-        st.success("Auditoria em Funil concluída!")
-        st.download_button(label="📥 Baixar Relatório Master Funil", data=output.getvalue(), file_name="AUDITORIA_FUNIL_FINAL.xlsx", mime="application/vnd.ms-excel")
+        st.success("Relatório consolidado com sucesso!")
+        st.download_button(label="📥 Baixar Auditoria Final", data=output.getvalue(), file_name="AUDITORIA_CONSOLIDADA.xlsx")
