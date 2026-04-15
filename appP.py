@@ -125,12 +125,16 @@ if st.button("🚀 Iniciar Auditoria"):
         resumo_painel = pd.merge(df_nf, painel_com_cnpj[['chave_p', 'N° da Nota fiscal']].drop_duplicates('chave_p'), left_on='chave_unica', right_on='chave_p', how='left')
         resumo_painel['Status'] = resumo_painel.apply(lambda r: "✅ NF Lançada" if r['chave_unica'] in chaves_lancadas else "❌ Sem Histórico", axis=1)
 
-        # --- CRUZAMENTO PEDIDOS ---
-        df_relacao['Cód. fornecedor'] = df_relacao['Cód. fornecedor'].apply(limpar_cod)
-        rel_com_cnpj = pd.merge(df_relacao, df_forn[['Cód. Fornecedor', 'CNPJCPF']], left_on='Cód. fornecedor', right_on='Cód. Fornecedor', how='left')
-        peds_agrupados = rel_com_cnpj.groupby('CNPJCPF')['Nº do pedido'].apply(lambda x: ", ".join(set(x.astype(str).unique()))).reset_index()
-        
-        resumo_pedidos = pd.merge(resumo_painel, peds_agrupados, left_on='CNPJ emitente', right_on='CNPJCPF', how='left')
+        # --- CRUZAMENTO PEDIDOS (VERSÃO CORRIGIDA) ---
+if 'CNPJCPF' in rel_com_cnpj.columns and 'Nº do pedido' in rel_com_cnpj.columns:
+    # Removemos nulos antes de agrupar para evitar o TypeError no join
+    rel_com_cnpj_clean = rel_com_cnpj.dropna(subset=['CNPJCPF', 'Nº do pedido'])
+    
+    peds_agrupados = rel_com_cnpj_clean.groupby('CNPJCPF')['Nº do pedido'].apply(
+        lambda x: ", ".join(sorted(set(x.astype(str).unique())))
+    ).reset_index()
+else:
+    peds_agrupados = pd.DataFrame(columns=['CNPJCPF', 'Nº do pedido'])
 
         # --- CRUZAMENTO CONTRATOS ---
         registros_ct = []
