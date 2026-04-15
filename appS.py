@@ -11,7 +11,7 @@ st.markdown("""
 1. Carregue o relatório de **NFs**.
 - Fornecido a cada 10 dias no servidor.
 2. Carregue o **Cadastro de Fornecedores**.
-- Home / Suprimentos / Compras / Relatórios / Pedidos de compra / Relação de Pedidos de Compra (Novo).
+- Home / Mais Opções / Apoio / Relatórios / Pessoas / Credores.
 3. Carregue o relatório do **Painel**.
 - Home / Suprimentos / Compras / Painel de Compras (Novo).
 2. Carregue o relatório de **Pedidos**.
