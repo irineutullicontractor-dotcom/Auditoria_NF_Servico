@@ -161,4 +161,4 @@ if st.button("🚀 Processar Auditoria"):
             aba3_final.to_excel(writer, sheet_name='3. CONTRATO', index=False)
         
         st.success("Relatório concluído com herança completa de colunas!")
-        st.download_button(label="📥 Baixar Auditoria Consolidada", data=output.getvalue(), file_name="AUDITORIA_MASTER.xlsx")
+        st.download_button(label="📥 Baixar Auditoria Consolidada", data=output.getvalue(), file_name="AUDITORIA_NF_SERVICO.xlsx")
