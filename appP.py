@@ -135,6 +135,9 @@ if 'CNPJCPF' in rel_com_cnpj.columns and 'Nº do pedido' in rel_com_cnpj.columns
     ).reset_index()
 else:
     peds_agrupados = pd.DataFrame(columns=['CNPJCPF', 'Nº do pedido'])
+    
+# Segue o merge...
+resumo_pedidos = pd.merge(resumo_painel, peds_agrupados, left_on='CNPJ emitente', right_on='CNPJCPF', how='left')
 
         # --- CRUZAMENTO CONTRATOS ---
         registros_ct = []
