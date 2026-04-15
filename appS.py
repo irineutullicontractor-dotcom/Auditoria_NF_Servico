@@ -8,7 +8,7 @@ st.set_page_config(page_title="Auditoria Master: Funil de Colunas", layout="wide
 st.title("📊 Auditoria Interna NF")
 st.markdown("""
 ### Instruções de uso:
-1. Carregue o relatório de **NFs** - 1 por período.
+1. Carregue o relatório de **NF's** - 1 por período.
 2. Carregue o relatório de **Credores**.
 3. Carregue o relatório do **Painel** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
 2. Carregue o relatório de **Pedidos** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
@@ -18,7 +18,7 @@ st.markdown("""
 # --- UPLOAD DOS 5 FICHEIROS ---
 col1, col2 = st.columns(2)
 with col1:
-    file_nf = st.file_uploader("1. Relatório de NFs - Fornecido a cada 10 dias no servidor.", type=['xlsx', 'csv'])
+    file_nf = st.file_uploader("1. Relatório de NF's - Fornecido a cada 10 dias no servidor.", type=['xlsx', 'csv'])
     file_forn = st.file_uploader("2. Relatório de Credores - Home / Mais Opções / Apoio / Relatórios / Pessoas / Credores.", type=['xlsx', 'csv'])
     file_painel = st.file_uploader("3. Relatório Painel - Home / Suprimentos / Compras / Painel de Compras (Novo).", type=['xlsx', 'csv'])
 with col2:
