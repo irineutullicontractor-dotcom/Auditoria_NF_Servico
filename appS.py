@@ -8,12 +8,9 @@ st.set_page_config(page_title="Auditoria Master: Funil de Colunas", layout="wide
 st.title("📊 Auditoria Interna NF: Fluxo de Dados Consolidado")
 st.markdown("""
 ### Instruções de uso:
-1. Carregue o relatório de **NFs**.
-- Fornecido a cada 10 dias no servidor.
+1. Carregue o relatório de **NFs** - 1 por período.
 2. Carregue o **Cadastro de Fornecedores**.
-- Home / Mais Opções / Apoio / Relatórios / Pessoas / Credores.
-3. Carregue o relatório do **Painel**.
-- Home / Suprimentos / Compras / Painel de Compras (Novo).
+3. Carregue o relatório do **Painel** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
 2. Carregue o relatório de **Pedidos**.
 - Home / Suprimentos / Compras / Relatórios / Pedidos de compra / Relação de Pedidos de Compra (Novo).
 4. Carregue o relatório de **Contratos**.
@@ -23,9 +20,9 @@ st.markdown("""
 # --- UPLOAD DOS 5 FICHEIROS ---
 col1, col2 = st.columns(2)
 with col1:
-    file_nf = st.file_uploader("1. Relatório de NFs", type=['xlsx', 'csv'])
-    file_forn = st.file_uploader("2. Cadastro de Fornecedores", type=['xlsx', 'csv'])
-    file_painel = st.file_uploader("3. Relatório Painel", type=['xlsx', 'csv'])
+    file_nf = st.file_uploader("1. Relatório de NFs - Fornecido a cada 10 dias no servidor.", type=['xlsx', 'csv'])
+    file_forn = st.file_uploader("2. Cadastro de Fornecedores - Home / Mais Opções / Apoio / Relatórios / Pessoas / Credores.", type=['xlsx', 'csv'])
+    file_painel = st.file_uploader("3. Relatório Painel - Home / Suprimentos / Compras / Painel de Compras (Novo)", type=['xlsx', 'csv'])
 with col2:
     file_relacao = st.file_uploader("4. Relatório Pedidos", type=['xlsx', 'csv'])
     file_contrato = st.file_uploader("5. Relatório Contrato", type=['xlsx', 'csv'])
