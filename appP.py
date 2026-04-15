@@ -139,18 +139,31 @@ else:
 # Segue o merge...
 resumo_pedidos = pd.merge(resumo_painel, peds_agrupados, left_on='CNPJ emitente', right_on='CNPJCPF', how='left')
 
-        # --- CRUZAMENTO CONTRATOS ---
+       # --- CRUZAMENTO CONTRATOS (CORRIGIDO) ---
         registros_ct = []
         item_atual = {'Contrato': None, 'CNPJ': None}
+        
         for i in range(len(df_bruto_ct)):
             l = df_bruto_ct.iloc[i]
+            # Verifica se a célula existe e não é nula antes de dar strip
             col_a = str(l[0]).strip() if pd.notna(l[0]) else ""
-            if col_a == "Contrato": item_atual['Contrato'] = str(l[3]).strip()
+            
+            if col_a == "Contrato":
+                item_atual['Contrato'] = str(l[3]).strip() if pd.notna(l[3]) else None
             elif col_a == "CNPJ" and item_atual['Contrato']:
                 item_atual['CNPJ'] = limpar_cnpj(l[3])
                 registros_ct.append(item_atual.copy())
         
-        cts_agrupados = pd.DataFrame(registros_ct).groupby('CNPJ')['Contrato'].apply(lambda x: ", ".join(set(x.astype(str).unique()))).reset_index() if registros_ct else pd.DataFrame(columns=['CNPJ', 'Contrato'])
+        # Criação do DataFrame de contratos agrupado
+        if registros_ct:
+            df_ct_data = pd.DataFrame(registros_ct)
+            cts_agrupados = df_ct_data.groupby('CNPJ')['Contrato'].apply(
+                lambda x: ", ".join(sorted(set(x.astype(str).unique())))
+            ).reset_index()
+        else:
+            cts_agrupados = pd.DataFrame(columns=['CNPJ', 'Contrato'])
+
+        # Merge final com contratos
         resumo_contratos = pd.merge(resumo_pedidos, cts_agrupados, left_on='CNPJ emitente', right_on='CNPJ', how='left')
 
         # Seleção de Colunas Final (Sequência solicitada)
