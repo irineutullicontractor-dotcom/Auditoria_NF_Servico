@@ -3,9 +3,9 @@ import pandas as pd
 import io
 
 # Configuração da página
-st.set_page_config(page_title="Auditoria Interna NF", layout="wide")
+st.set_page_config(page_title="Auditoria Interna NF - Serviço", layout="wide")
 
-st.title("📊 Auditoria Interna NF")
+st.title("📊 Auditoria Interna NF (Notas de Serviço)")
 st.markdown("""
 ### Instruções de uso:
 1. Carregue o relatório de **NF's** - 1 por período.
@@ -159,4 +159,4 @@ if st.button("🚀 Processar Auditoria"):
             aba3_final.to_excel(writer, sheet_name='3. CONTRATO', index=False)
         
         st.success("Tudo pronto! Relatório de Auditoria gerado com sucesso.")
-        st.download_button(label="📥 Baixar Auditoria", data=output.getvalue(), file_name="AUDITORIA_NF.xlsx")
+        st.download_button(label="📥 Baixar Auditoria", data=output.getvalue(), file_name="AUDITORIA_NF_SERVIÇO.xlsx")
