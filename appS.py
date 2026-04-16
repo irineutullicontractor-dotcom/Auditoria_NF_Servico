@@ -5,7 +5,7 @@ import io
 # Configuração da página
 st.set_page_config(page_title="Auditoria Interna NF - Serviço", layout="wide")
 
-st.title("📊 Auditoria Interna NF (Notas de Serviço)")
+st.title("📊 Auditoria Interna NF - Serviço")
 st.markdown("""
 ### Instruções de uso:
 1. Carregue o relatório de **NF's** - 1 por período.
