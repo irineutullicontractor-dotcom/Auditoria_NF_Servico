@@ -23,7 +23,10 @@ def limpar_cnpj(v):
 
 def limpar_cod(v):
     if pd.isna(v): return ""
-    return str(v).split('.')[0].strip().lstrip('0')
+    # Remove o .0 se o Excel ler como float e remove zeros à esquerda
+    s = str(v).strip()
+    if s.endswith('.0'): s = s[:-2]
+    return s.lstrip('0')
 
 def extrair_nf_produto(v):
     if pd.isna(v) or str(v).strip() == "" or str(v).lower() == "nan": return ""
@@ -51,6 +54,7 @@ def estruturar_notas_produtos_interno(file):
         if processando and val_a != "" and val_a != "nan":
             registros.append([cnpj_dest] + list(row.values))
 
+    if not registros: return pd.DataFrame()
     df = pd.DataFrame(registros, columns=['CNPJ Destinatário'] + colunas_id)
     return df.dropna(subset=['Emitente'])
 
@@ -67,7 +71,7 @@ def transformar_credor_limpo(df_bruto):
                     return parts[0].strip(), " - ".join(parts[1:]).strip()
                 return "", s
             res_split = df_header['Credor'].apply(split_safe)
-            df_header['Cód. Fornecedor_Limpo'] = res_split.apply(lambda x: x[0])
+            df_header['Cód. Fornecedor_Limpo'] = res_split.apply(lambda x: x[0].lstrip('0'))
             df_header['Fornecedor_Nome'] = res_split.apply(lambda x: x[1])
             return df_header.rename(columns={'CNPJ/CPF': 'CNPJCPF'})
     return df_bruto
@@ -92,6 +96,10 @@ if st.button("🚀 Iniciar Auditoria"):
         df_relacao = pd.read_excel(file_relacao)
         df_bruto_ct = pd.read_excel(file_contrato, header=None)
 
+        if df_nf.empty:
+            st.error("Não foi possível identificar dados no arquivo de NF's.")
+            st.stop()
+
         # 2. Padronizar NF e Credores
         df_nf['CNPJ_EMIT_LIMPO'] = df_nf['CNPJ emitente'].apply(limpar_cnpj)
         df_nf['NF_PURA'] = df_nf['Núm/Série'].apply(extrair_nf_produto)
@@ -110,7 +118,7 @@ if st.button("🚀 Iniciar Auditoria"):
         chaves_lancadas = set(painel_com_cnpj[painel_com_cnpj['NF_PAINEL_PURA'] != ""]['chave_p'].unique())
         cnpjs_no_painel = set(painel_com_cnpj['CNPJ_FORN_LIMPO'].unique())
 
-        # 4. Cruzamento Pedidos (Correção do Erro de Coluna)
+        # 4. Cruzamento Pedidos (Correção do Erro de Ordenação/Tipagem)
         df_relacao['Cód. fornecedor_Limpo'] = df_relacao['Cód. fornecedor'].apply(limpar_cod)
         rel_com_cnpj = pd.merge(
             df_relacao, 
@@ -119,7 +127,13 @@ if st.button("🚀 Iniciar Auditoria"):
             right_on='Cód. Fornecedor_Limpo', 
             how='left'
         )
-        peds_agrupados = rel_com_cnpj.groupby('CNPJ_FORN_LIMPO')['Nº do pedido'].apply(lambda x: ", ".join(sorted(set(x.astype(str).unique())))).reset_index()
+        
+        # Agrupamento com tratamento para evitar erro de sorted()
+        def agrupar_pedidos(x):
+            lista = [str(val).strip() for val in x.unique() if pd.notna(val) and str(val).strip() != ""]
+            return ", ".join(sorted(lista))
+        
+        peds_agrupados = rel_com_cnpj.groupby('CNPJ_FORN_LIMPO')['Nº do pedido'].apply(agrupar_pedidos).reset_index()
 
         # 5. Cruzamento Contratos
         registros_ct = []
@@ -132,7 +146,11 @@ if st.button("🚀 Iniciar Auditoria"):
                 item_atual['CNPJ'] = limpar_cnpj(l[3])
                 registros_ct.append(item_atual.copy())
         
-        cts_agrupados = pd.DataFrame(registros_ct).groupby('CNPJ')['Contrato'].apply(lambda x: ", ".join(sorted(set(x.astype(str).unique())))).reset_index() if registros_ct else pd.DataFrame(columns=['CNPJ', 'Contrato'])
+        def agrupar_contratos(x):
+            lista = [str(val).strip() for val in x.unique() if pd.notna(val) and str(val).strip() != ""]
+            return ", ".join(sorted(lista))
+
+        cts_agrupados = pd.DataFrame(registros_ct).groupby('CNPJ')['Contrato'].apply(agrupar_contratos).reset_index() if registros_ct else pd.DataFrame(columns=['CNPJ', 'Contrato'])
 
         # 6. Unificação e Status
         resumo = pd.merge(df_nf, painel_com_cnpj[['chave_p', 'N° da Nota fiscal']].drop_duplicates('chave_p'), left_on='chave_unica', right_on='chave_p', how='left')
@@ -142,7 +160,7 @@ if st.button("🚀 Iniciar Auditoria"):
         def definir_status(r):
             if r['chave_unica'] in chaves_lancadas: return "✅ NF Lançada"
             if r['CNPJ_EMIT_LIMPO'] in set(peds_agrupados['CNPJ_FORN_LIMPO']): return "⚠️ Para Verificação"
-            if pd.notna(r['Contrato']): return "📄 Vínculo Contratual"
+            if pd.notna(r['Contrato']) and str(r['Contrato']).strip() != "": return "📄 Vínculo Contratual"
             return "❌ Sem Histórico"
 
         resumo['Status'] = resumo.apply(definir_status, axis=1)
