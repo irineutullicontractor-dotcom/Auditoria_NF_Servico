@@ -35,14 +35,14 @@ def limpar_cod(v):
     if pd.isna(v): return ""
     return str(v).split('.')[0].strip().lstrip('0')
 
-# 🔥 NOVO: NF PRODUTO (antes da /)
+# 🔥 NF PRODUTO → antes da /
 def extrair_nf_produto(v):
     if pd.isna(v) or str(v).strip() == "" or str(v).lower() == "nan": return ""
     v = str(v).split('/')[0]
     v = "".join(filter(str.isdigit, v))
     return v.lstrip('0')
 
-# 🔥 NOVO: NF PAINEL (depois da /)
+# 🔥 NF PAINEL → depois da /
 def extrair_nf_painel(v):
     if pd.isna(v) or str(v).strip() == "" or str(v).lower() == "nan": return ""
     v = str(v)
@@ -105,9 +105,10 @@ if st.button("🚀 Iniciar Auditoria"):
         df_forn['CNPJCPF'] = df_forn['CNPJCPF'].apply(limpar_cnpj)
         df_nf['CNPJ emitente'] = df_nf['CNPJ emitente'].apply(limpar_cnpj)
 
-        # 🔥 AQUI FOI CORRIGIDO
+        # 🔥 CORREÇÃO AQUI
         df_nf['nf_limpa'] = df_nf['Núm/Série'].apply(extrair_nf_produto)
         
+        # Chave
         df_nf['chave_unica'] = df_nf.apply(lambda r: r['CNPJ emitente'] + "_" + r['nf_limpa'] if r['nf_limpa'] != "" else "SEM_NF_" + str(r.name), axis=1)
 
         # --- PAINEL ---
@@ -122,7 +123,7 @@ if st.button("🚀 Iniciar Auditoria"):
         chaves_lancadas = set(painel_com_cnpj[painel_com_cnpj['nf_ref_limpa'] != ""]['chave_p'].unique())
         cnpjs_no_painel = set(painel_com_cnpj['CNPJCPF'].unique())
 
-        # --- RESTANTE 100% IGUAL ---
+        # --- ABA 1: PAINEL ---
         resumo_painel = pd.merge(df_nf, painel_com_cnpj[['chave_p', 'N° da Nota fiscal']].drop_duplicates('chave_p'), left_on='chave_unica', right_on='chave_p', how='left')
         
         def status_painel(r):
@@ -132,6 +133,7 @@ if st.button("🚀 Iniciar Auditoria"):
         
         resumo_painel['Status'] = resumo_painel.apply(status_painel, axis=1)
 
+        # --- PEDIDOS ---
         df_relacao['Cód. fornecedor'] = df_relacao['Cód. fornecedor'].apply(limpar_cod)
         rel_com_cnpj = pd.merge(df_relacao, df_forn[['Cód. Fornecedor', 'CNPJCPF']], left_on='Cód. fornecedor', right_on='Cód. Fornecedor', how='left')
         rel_com_cnpj['CNPJCPF'] = rel_com_cnpj['CNPJCPF'].apply(limpar_cnpj)
@@ -149,13 +151,41 @@ if st.button("🚀 Iniciar Auditoria"):
         
         resumo_pedidos['Status_Ped'] = resumo_pedidos.apply(status_pedidos, axis=1)
 
-        resumo_contratos = pd.merge(resumo_pedidos, peds_agrupados, left_on='CNPJ emitente', right_on='CNPJCPF', how='left')
+        # --- CONTRATO ---
+        registros_ct = []
+        item_atual = {'Contrato': None, 'CNPJ': None}
+        for i in range(len(df_bruto_ct)):
+            l = df_bruto_ct.iloc[i]
+            col_a = str(l[0]).strip() if pd.notna(l[0]) else ""
+            if col_a == "Contrato": item_atual['Contrato'] = str(l[3]).strip()
+            elif col_a == "CNPJ" and item_atual['Contrato']:
+                item_atual['CNPJ'] = limpar_cnpj(l[3])
+                registros_ct.append(item_atual.copy())
+        
+        cts_agrupados = pd.DataFrame(registros_ct).groupby('CNPJ')['Contrato'].apply(lambda x: ", ".join(sorted(set(x.astype(str).unique())))).reset_index() if registros_ct else pd.DataFrame(columns=['CNPJ', 'Contrato'])
+
+        resumo_contratos = pd.merge(resumo_pedidos, cts_agrupados, left_on='CNPJ emitente', right_on='CNPJ', how='left')
+
+        def status_ct(r):
+            if r['Status_Ped'] == "✅ Resolvido Painel": return "✅ Resolvido Painel"
+            if pd.notna(r['Contrato']) and str(r['Contrato']).strip() != "": return "📄 Vínculo Contratual"
+            return r['Status_Ped']
+        
+        resumo_contratos['Status_CT'] = resumo_contratos.apply(status_ct, axis=1)
+
+        # --- SAÍDA FINAL (SEU PADRÃO ORIGINAL) ---
+        cols_base = ['Núm/Série', 'CNPJ emitente', 'Emitente', 'Emissão', 'Valor']
+        cols_extra = ['CNPJ Destinatário', 'Destinatário']
+        
+        aba1 = resumo_painel[cols_base + ['N° da Nota fiscal', 'Status'] + cols_extra]
+        aba2 = resumo_pedidos[cols_base + ['N° da Nota fiscal', 'Nº do pedido', 'Status_Ped'] + cols_extra].rename(columns={'Status_Ped': 'Status', 'Nº do pedido': 'Pedido'})
+        aba3 = resumo_contratos[cols_base + ['N° da Nota fiscal', 'Nº do pedido', 'Contrato', 'Status_CT'] + cols_extra].rename(columns={'Status_CT': 'Status', 'Nº do pedido': 'Pedido'})
 
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            resumo_painel.to_excel(writer, sheet_name='1. PAINEL', index=False)
-            resumo_pedidos.to_excel(writer, sheet_name='2. PEDIDOS', index=False)
-            resumo_contratos.to_excel(writer, sheet_name='3. CONTRATO', index=False)
+            aba1.to_excel(writer, sheet_name='1. PAINEL', index=False)
+            aba2.to_excel(writer, sheet_name='2. PEDIDOS', index=False)
+            aba3.to_excel(writer, sheet_name='3. CONTRATO', index=False)
         
         st.success("Tudo pronto! Relatório de Auditoria gerado com sucesso.")
         st.download_button("📥 Baixar Auditoria", output.getvalue(), "AUDITORIA_NF_PRODUTO.xlsx")
