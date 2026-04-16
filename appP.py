@@ -6,33 +6,65 @@ import io
 st.set_page_config(page_title="Auditoria Interna NF - Produto", layout="wide")
 
 st.title("📊 Auditoria Interna NF - Produto")
+st.markdown("""
+### Instruções de uso:
+1. Carregue o relatório de **NF's** - Puxar relatório do mês vigente.
+2. Carregue o relatório de **Credores**.
+3. Carregue o relatório do **Painel** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
+4. Carregue o relatório de **Pedidos** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
+5. Carregue o relatório de **Contratos** - Puxar relatório de 01/01/2020 até a data vigente.
+""")
 
-# --- FUNÇÕES DE PADRONIZAÇÃO TOTAL ---
+# --- UPLOAD DOS FICHEIROS ---
+col1, col2 = st.columns(2)
+with col1:
+    file_nf_prod = st.file_uploader("1. Relatório de NF's", type=['xlsx'])
+    file_forn = st.file_uploader("2. Relatório de Credores", type=['xlsx', 'csv'])
+    file_painel = st.file_uploader("3. Relatório Painel", type=['xlsx', 'csv'])
+with col2:
+    file_relacao = st.file_uploader("4. Relatório Pedidos", type=['xlsx', 'csv'])
+    file_contrato = st.file_uploader("5. Relatório Contrato", type=['xlsx', 'csv'])
 
-def limpar_geral(v):
-    """Remove nulos, converte para string, tira .0 de números e espaços."""
-    if pd.isna(v): return ""
-    s = str(v).strip().split('.')[0]
-    return "" if s.lower() == "nan" else s
-
+# --- FUNÇÕES DE LIMPEZA ---
 def limpar_cnpj(v):
     if pd.isna(v): return ""
     num = "".join(filter(str.isdigit, str(v)))
     return num.zfill(14) if len(num) > 11 else num.zfill(11)
 
-def extrair_nf(v):
-    """Pega '444/1' e retorna '444'. Também limpa .0 e espaços."""
+def limpar_cod(v):
     if pd.isna(v): return ""
-    # Primeiro tira o que vem depois da barra, depois tira o .0 se houver
-    s = str(v).split('/')[0].split('.')[0].strip()
-    return "" if s.lower() == "nan" else s
+    return str(v).split('.')[0].strip().lstrip('0')
 
-# --- PROCESSAMENTO DE ARQUIVOS ---
+# 🔥 NF PRODUTO → pega antes da /
+def extrair_nf_produto(v):
+    if pd.isna(v): return ""
+    v = str(v).strip()
+    if v == "" or v.lower() == "nan": return ""
+    
+    v = v.split('/')[0]
+    v = "".join(filter(str.isdigit, v))
+    
+    return v.lstrip('0')
 
-def estruturar_notas_produtos(file):
+# 🔥 NF PAINEL → pega depois da /
+def extrair_nf_painel(v):
+    if pd.isna(v): return ""
+    v = str(v).strip()
+    if v == "" or v.lower() == "nan": return ""
+    
+    if '/' in v:
+        v = v.split('/')[-1]
+    
+    v = "".join(filter(str.isdigit, v))
+    
+    return v.lstrip('0')
+
+def estruturar_notas_produtos_interno(file):
     df_bruto = pd.read_excel(file, header=None)
     registros = []
-    cnpj_dest, colunas_id, processando = None, None, False
+    cnpj_dest = None
+    colunas_id = None
+    processando = False
 
     for i, row in df_bruto.iterrows():
         val_a = str(row[0]).strip() if pd.notna(row[0]) else ""
@@ -48,86 +80,127 @@ def estruturar_notas_produtos(file):
             registros.append([cnpj_dest] + list(row.values))
 
     df = pd.DataFrame(registros, columns=['CNPJ Destinatário'] + colunas_id)
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed|^nan|None', case=False, na=False)]
     return df.dropna(subset=['Emitente'])
 
-def tratar_credores(file):
-    df_bruto = pd.read_excel(file, header=None)
+def transformar_credor_limpo(df_bruto):
     for i in range(min(15, len(df_bruto))):
         row_values = [str(x).strip() for x in df_bruto.iloc[i].values]
         if 'Credor' in row_values and 'CNPJ/CPF' in row_values:
-            df = df_bruto.iloc[i+1:].copy()
-            df.columns = [str(c).strip() for c in df_bruto.iloc[i].values]
-            # Extração de código do fornecedor
-            def split_forn(val):
+            df_header = df_bruto.iloc[i+1:].copy()
+            df_header.columns = [str(c).strip() for c in df_bruto.iloc[i].values]
+            df_header = df_header.loc[:, df_header.columns.notna() & (df_header.columns != 'nan')]
+
+            def split_safe(val):
                 s = str(val).strip()
-                return s.split(" - ")[0] if " - " in s else ""
-            df['Cód. Fornecedor'] = df['Credor'].apply(split_forn).apply(limpar_geral)
-            df['CNPJCPF'] = df['CNPJ/CPF'].apply(limpar_cnpj)
-            df['Credor_UP'] = df['Credor'].astype(str).str.upper().strip()
-            return df[['Cód. Fornecedor', 'CNPJCPF', 'Credor_UP']]
-    return pd.DataFrame()
+                return (s.split(" - ")[0], " - ".join(s.split(" - ")[1:])) if " - " in s else ("", s)
 
-# --- INTERFACE ---
-col1, col2 = st.columns(2)
-with col1:
-    f_nf = st.file_uploader("1. Relatório de NF's", type=['xlsx'])
-    f_forn = st.file_uploader("2. Relatório de Credores", type=['xlsx'])
-    f_painel = st.file_uploader("3. Relatório Painel", type=['xlsx'])
-with col2:
-    f_ped = st.file_uploader("4. Relatório Pedidos", type=['xlsx'])
-    f_ct = st.file_uploader("5. Relatório Contrato", type=['xlsx'])
+            res_split = df_header['Credor'].apply(split_safe)
+            df_header['Cód. Fornecedor'] = res_split.apply(lambda x: x[0])
+            df_header['Fornecedor'] = res_split.apply(lambda x: x[1])
 
+            return df_header.rename(columns={'CNPJ/CPF': 'CNPJCPF'})
+    return df_bruto
+
+# --- PROCESSAMENTO ---
 if st.button("🚀 Iniciar Auditoria"):
-    if all([f_nf, f_forn, f_painel, f_ped, f_ct]):
-        # 1. Cargas e Padronização de Tipos (Strings em Tudo)
-        df_nf = estruturar_notas_produtos(f_nf)
-        df_forn = tratar_credores(f_forn)
-        df_painel = pd.read_excel(f_painel)
-        df_ped = pd.read_excel(f_ped)
+    if all([file_nf_prod, file_forn, file_painel, file_relacao, file_contrato]):
         
-        # Limpeza Crítica das Notas (Aplica na coluna visual e na chave)
-        df_nf['Núm/Série'] = df_nf['Núm/Série'].apply(extrair_nf)
+        df_nf = estruturar_notas_produtos_interno(file_nf_prod)
+        df_forn = transformar_credor_limpo(pd.read_excel(file_forn, header=None))
+        df_painel = pd.read_excel(file_painel)
+        df_relacao = pd.read_excel(file_relacao)
+        df_bruto_ct = pd.read_excel(file_contrato, header=None)
+
+        # Padronização
+        df_forn['CNPJCPF'] = df_forn['CNPJCPF'].apply(limpar_cnpj)
         df_nf['CNPJ emitente'] = df_nf['CNPJ emitente'].apply(limpar_cnpj)
-        df_nf['chave'] = df_nf['CNPJ emitente'] + "_" + df_nf['Núm/Série']
-        
-        # 2. Vínculo com Painel
-        df_painel['Fornecedor_UP'] = df_painel['Fornecedor'].astype(str).str.upper().strip()
-        painel_cnpj = pd.merge(df_painel, df_forn[['Credor_UP', 'CNPJCPF']], left_on='Fornecedor_UP', right_on='Credor_UP', how='left')
-        
-        painel_cnpj['nf_limpa'] = painel_cnpj['N° da Nota fiscal'].apply(extrair_nf)
-        painel_cnpj['cnpj_limpo'] = painel_cnpj['CNPJCPF'].apply(limpar_cnpj)
-        painel_cnpj['chave_p'] = painel_cnpj['cnpj_limpo'] + "_" + painel_cnpj['nf_limpa']
-        
-        # Cruzamento principal (Aba 1)
-        resumo = pd.merge(df_nf, painel_cnpj[['chave_p', 'N° da Nota fiscal']].drop_duplicates('chave_p'), 
-                          left_on='chave', right_on='chave_p', how='left')
-        
-        chaves_no_painel = set(painel_cnpj[painel_cnpj['nf_limpa'] != ""]['chave_p'])
-        cnpjs_no_painel = set(painel_cnpj['cnpj_limpo'])
 
-        def st_painel(r):
-            if r['chave'] in chaves_no_painel: return "✅ NF Lançada"
-            if r['CNPJ emitente'] in cnpjs_no_painel: return "⚠️ Para Verificação"
+        # 🔥 AQUI ESTÁ A CORREÇÃO PRINCIPAL
+        df_nf['nf_limpa'] = df_nf['Núm/Série'].apply(extrair_nf_produto)
+
+        df_nf['chave_unica'] = df_nf['CNPJ emitente'] + "_" + df_nf['nf_limpa']
+
+        # --- PAINEL ---
+        df_painel['nf_ref_limpa'] = df_painel['N° da Nota fiscal'].apply(extrair_nf_painel)
+        df_painel['Fornecedor_UP'] = df_painel['Fornecedor'].astype(str).str.strip().str.upper()
+        df_forn['Credor_UP'] = df_forn['Credor'].astype(str).str.strip().str.upper()
+
+        painel_com_cnpj = pd.merge(
+            df_painel,
+            df_forn[['Credor_UP', 'CNPJCPF']],
+            left_on='Fornecedor_UP',
+            right_on='Credor_UP',
+            how='left'
+        )
+
+        painel_com_cnpj['CNPJCPF'] = painel_com_cnpj['CNPJCPF'].apply(limpar_cnpj)
+
+        painel_com_cnpj['chave_p'] = (
+            painel_com_cnpj['CNPJCPF'] + "_" + painel_com_cnpj['nf_ref_limpa']
+        )
+
+        chaves_lancadas = set(
+            painel_com_cnpj[painel_com_cnpj['nf_ref_limpa'] != ""]['chave_p'].unique()
+        )
+
+        cnpjs_no_painel = set(painel_com_cnpj['CNPJCPF'].unique())
+
+        # --- ABA 1 ---
+        resumo_painel = pd.merge(
+            df_nf,
+            painel_com_cnpj[['chave_p', 'N° da Nota fiscal']].drop_duplicates('chave_p'),
+            left_on='chave_unica',
+            right_on='chave_p',
+            how='left'
+        )
+
+        def status_painel(r):
+            if r['chave_unica'] in chaves_lancadas:
+                return "✅ NF Lançada"
+            if r['CNPJ emitente'] in cnpjs_no_painel:
+                return "⚠️ Para Verificação"
             return "❌ Sem Histórico"
-        resumo['Status'] = resumo.apply(st_painel, axis=1)
 
-        # 3. Vínculo com Pedidos (Aba 2) - Resolvendo o ValueError
-        df_ped['cod_forn_ped'] = df_ped['Cód. fornecedor'].apply(limpar_geral)
-        # Forçamos o merge de códigos como string
-        ped_com_cnpj = pd.merge(df_ped, df_forn[['Cód. Fornecedor', 'CNPJCPF']], 
-                                left_on='cod_forn_ped', right_on='Cód. Fornecedor', how='left')
-        
-        peds_agrup = ped_com_cnpj.groupby('CNPJCPF')['Nº do pedido'].apply(
-            lambda x: ", ".join(sorted(set(limpar_geral(v) for v in x if pd.notna(v))))
+        resumo_painel['Status'] = resumo_painel.apply(status_painel, axis=1)
+
+        # --- RESTANTE (inalterado) ---
+        df_relacao['Cód. fornecedor'] = df_relacao['Cód. fornecedor'].apply(limpar_cod)
+
+        rel_com_cnpj = pd.merge(
+            df_relacao,
+            df_forn[['Cód. Fornecedor', 'CNPJCPF']],
+            left_on='Cód. fornecedor',
+            right_on='Cód. Fornecedor',
+            how='left'
+        )
+
+        rel_com_cnpj['CNPJCPF'] = rel_com_cnpj['CNPJCPF'].apply(limpar_cnpj)
+
+        peds_agrupados = rel_com_cnpj.dropna(subset=['Nº do pedido']).groupby('CNPJCPF')['Nº do pedido'].apply(
+            lambda x: ", ".join(sorted(set(x.astype(str).unique())))
         ).reset_index()
-        
-        resumo = pd.merge(resumo, peds_agrup, left_on='CNPJ emitente', right_on='CNPJCPF', how='left')
 
-        # 4. Exportação
+        resumo_pedidos = pd.merge(
+            resumo_painel,
+            peds_agrupados,
+            left_on='CNPJ emitente',
+            right_on='CNPJCPF',
+            how='left'
+        )
+
+        def status_pedidos(r):
+            if r['Status'] == "✅ NF Lançada":
+                return "✅ Resolvido Painel"
+            return "⚠️ Para Verificação"
+
+        resumo_pedidos['Status_Ped'] = resumo_pedidos.apply(status_pedidos, axis=1)
+
+        # EXPORTAÇÃO
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            cols = ['Núm/Série', 'CNPJ emitente', 'Emitente', 'Emissão', 'Valor', 'Status', 'N° da Nota fiscal', 'Nº do pedido']
-            resumo[cols].to_excel(writer, sheet_name='Auditoria', index=False)
-        
-        st.success("Auditoria concluída com sucesso!")
-        st.download_button("📥 Baixar Relatório", output.getvalue(), "AUDITORIA_FINAL.xlsx")
+            resumo_painel.to_excel(writer, sheet_name='1. PAINEL', index=False)
+            resumo_pedidos.to_excel(writer, sheet_name='2. PEDIDOS', index=False)
+
+        st.success("Tudo pronto!")
+        st.download_button("📥 Baixar", output.getvalue(), "AUDITORIA_NF_PRODUTO.xlsx")
