@@ -6,16 +6,8 @@ import io
 st.set_page_config(page_title="Auditoria Interna NF - Produto", layout="wide")
 
 st.title("📊 Auditoria Interna NF - Produto")
-st.markdown("""
-### Instruções de uso:
-1. Carregue o relatório de **NF's** - Puxar relatório do mês vigente.
-2. Carregue o relatório de **Credores**.
-3. Carregue o relatório do **Painel** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
-4. Carregue o relatório de **Pedidos** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
-5. Carregue o relatório de **Contratos** - Puxar relatório de 01/01/2020 até a data vigente.
-""")
 
-# --- FUNÇÕES DE APOIO (Ajustadas para bater com a lógica de Serviço) ---
+# --- FUNÇÕES DE APOIO ---
 def limpar_cnpj(v):
     if pd.isna(v): return ""
     num = "".join(filter(str.isdigit, str(v)))
@@ -23,20 +15,15 @@ def limpar_cnpj(v):
 
 def limpar_cod(v):
     if pd.isna(v): return ""
-    return str(v).split('.')[0].strip().lstrip('0')
+    return str(v).split('.')[0].strip() # Removido o lstrip('0') conforme solicitado
 
 def extrair_nf(v):
     """
-    LOGICA CORRIGIDA: 
-    Pega 44411/1 e transforma em 44411.
-    Remove qualquer caractere não numérico da parte antes da barra.
+    Pega 4441/1 e deixa apenas 4441.
     """
     if pd.isna(v) or str(v).strip() == "" or str(v).lower() == "nan": return ""
-    # Pega apenas o que vem antes da barra (ex: 44411)
-    texto = str(v).split('/')[0].strip()
-    # Mantém apenas os números
-    num_limpo = "".join(filter(str.isdigit, texto))
-    return num_limpo
+    # Pega a parte antes da barra e limpa espaços
+    return str(v).split('/')[0].strip()
 
 def estruturar_notas_produtos_interno(file):
     df_bruto = pd.read_excel(file, header=None)
@@ -78,15 +65,15 @@ def transformar_credor_limpo(df_bruto):
             return df_header.rename(columns={'CNPJ/CPF': 'CNPJCPF'})
     return df_bruto
 
-# --- INTERFACE DE UPLOAD ---
+# --- UPLOADS ---
 col1, col2 = st.columns(2)
 with col1:
-    file_nf_prod = st.file_uploader("1. Relatório de NF's - Home / Notas Fiscais / Recepção de NF-e / Relatórios / Notas Fiscais Recebidas.", type=['xlsx'])
-    file_forn = st.file_uploader("2. Relatório de Credores - Home / Mais Opções / Apoio / Relatórios / Pessoas / Credores.", type=['xlsx', 'csv'])
-    file_painel = st.file_uploader("3. Relatório Painel - Home / Suprimentos / Compras / Painel de Compras (Novo).", type=['xlsx', 'csv'])
+    file_nf_prod = st.file_uploader("1. Relatório de NF's", type=['xlsx'])
+    file_forn = st.file_uploader("2. Relatório de Credores", type=['xlsx', 'csv'])
+    file_painel = st.file_uploader("3. Relatório Painel", type=['xlsx', 'csv'])
 with col2:
-    file_relacao = st.file_uploader("4. Relatório Pedidos - Home / Suprimentos / Compras / Relatórios / Pedidos de compra / Relação de Pedidos de Compra (Novo).", type=['xlsx', 'csv'])
-    file_contrato = st.file_uploader("5. Relatório Contrato - Home / Suprimentos / Contratos e Medições / Relatórios / Contratos / Emissão de Contratos.", type=['xlsx', 'csv'])
+    file_relacao = st.file_uploader("4. Relatório Pedidos", type=['xlsx', 'csv'])
+    file_contrato = st.file_uploader("5. Relatório Contrato", type=['xlsx', 'csv'])
 
 # --- PROCESSAMENTO ---
 if st.button("🚀 Iniciar Auditoria"):
@@ -98,12 +85,11 @@ if st.button("🚀 Iniciar Auditoria"):
         df_relacao = pd.read_excel(file_relacao)
         df_bruto_ct = pd.read_excel(file_contrato, header=None)
 
-        # Padronização NF Produto
+        # Padronização
         df_nf['CNPJ emitente'] = df_nf['CNPJ emitente'].apply(limpar_cnpj)
         df_nf['nf_limpa'] = df_nf['Núm/Série'].apply(extrair_nf)
         df_nf['chave_unica'] = df_nf['CNPJ emitente'] + "_" + df_nf['nf_limpa']
         
-        # Padronização Fornecedores e Painel
         df_forn['CNPJCPF'] = df_forn['CNPJCPF'].apply(limpar_cnpj)
         df_forn['Credor_UP'] = df_forn['Credor'].astype(str).str.strip().str.upper()
         
@@ -117,35 +103,34 @@ if st.button("🚀 Iniciar Auditoria"):
         chaves_lancadas = set(painel_com_cnpj[painel_com_cnpj['nf_ref_limpa'] != ""]['chave_p'].unique())
         cnpjs_no_painel = set(painel_com_cnpj['CNPJCPF'].unique())
 
-        # --- CONSTRUÇÃO DAS ABAS ---
-        
-        # ABA 1: PAINEL
+        # --- ABA 1: PAINEL ---
         resumo_painel = pd.merge(df_nf, painel_com_cnpj[['chave_p', 'N° da Nota fiscal']].drop_duplicates('chave_p'), left_on='chave_unica', right_on='chave_p', how='left')
         
         def status_painel(r):
             if r['chave_unica'] in chaves_lancadas: return "✅ NF Lançada"
             if r['CNPJ emitente'] in cnpjs_no_painel: return "⚠️ Para Verificação"
             return "❌ Sem Histórico"
-        
         resumo_painel['Status'] = resumo_painel.apply(status_painel, axis=1)
 
-        # ABA 2: PEDIDOS
+        # --- ABA 2: PEDIDOS (Lógica Corrigida para evitar o TypeError) ---
         df_relacao['Cód. fornecedor'] = df_relacao['Cód. fornecedor'].apply(limpar_cod)
         rel_com_cnpj = pd.merge(df_relacao, df_forn[['Cód. Fornecedor', 'CNPJCPF']], left_on='Cód. fornecedor', right_on='Cód. Fornecedor', how='left')
-        peds_agrupados = rel_com_cnpj.groupby('CNPJCPF')['Nº do pedido'].apply(lambda x: ", ".join(set(x.astype(str).unique()))).reset_index()
+        
+        # Agrupamento Seguro: converte para string e remove decimais (.0) antes do join
+        peds_agrupados = rel_com_cnpj.groupby('CNPJCPF')['Nº do pedido'].apply(
+            lambda x: ", ".join(sorted(set(str(v).split('.')[0] for v in x if pd.notna(v))))
+        ).reset_index()
         
         resumo_pedidos = pd.merge(resumo_painel, peds_agrupados, left_on='CNPJ emitente', right_on='CNPJCPF', how='left')
         cnpjs_com_pedido = set(peds_agrupados['CNPJCPF'].unique())
 
         def status_pedidos(r):
             if r['Status'] == "✅ NF Lançada": return "✅ Resolvido Painel"
-            if r['CNPJ emitente'] in cnpjs_com_pedido or r['Status'] == "⚠️ Para Verificação": 
-                return "⚠️ Para Verificação"
+            if r['CNPJ emitente'] in cnpjs_com_pedido or r['Status'] == "⚠️ Para Verificação": return "⚠️ Para Verificação"
             return "❌ Sem Histórico"
-        
         resumo_pedidos['Status_Ped'] = resumo_pedidos.apply(status_pedidos, axis=1)
 
-        # ABA 3: CONTRATO
+        # --- ABA 3: CONTRATO ---
         registros_ct = []
         item_atual = {'Contrato': None, 'CNPJ': None}
         for i in range(len(df_bruto_ct)):
@@ -156,7 +141,9 @@ if st.button("🚀 Iniciar Auditoria"):
                 item_atual['CNPJ'] = limpar_cnpj(l[3])
                 registros_ct.append(item_atual.copy())
         
-        cts_agrupados = pd.DataFrame(registros_ct).groupby('CNPJ')['Contrato'].apply(lambda x: ", ".join(set(x.astype(str).unique()))).reset_index() if registros_ct else pd.DataFrame(columns=['CNPJ', 'Contrato'])
+        cts_agrupados = pd.DataFrame(registros_ct).groupby('CNPJ')['Contrato'].apply(
+            lambda x: ", ".join(set(str(v) for v in x if pd.notna(v)))
+        ).reset_index() if registros_ct else pd.DataFrame(columns=['CNPJ', 'Contrato'])
 
         resumo_contratos = pd.merge(resumo_pedidos, cts_agrupados, left_on='CNPJ emitente', right_on='CNPJ', how='left')
 
@@ -164,10 +151,9 @@ if st.button("🚀 Iniciar Auditoria"):
             if r['Status_Ped'] == "✅ Resolvido Painel": return "✅ Resolvido Painel"
             if pd.notna(r['Contrato']) and str(r['Contrato']).strip() != "": return "📄 Vínculo Contratual"
             return r['Status_Ped']
-        
         resumo_contratos['Status_CT'] = resumo_contratos.apply(status_ct, axis=1)
 
-        # SELEÇÃO FINAL
+        # EXPORTAÇÃO
         cols_base = ['Núm/Série', 'CNPJ emitente', 'Emitente', 'Emissão', 'Valor']
         cols_extra = ['CNPJ Destinatário', 'Destinatário']
         
@@ -181,5 +167,5 @@ if st.button("🚀 Iniciar Auditoria"):
             aba2_f.to_excel(writer, sheet_name='2. PEDIDOS', index=False)
             aba3_f.to_excel(writer, sheet_name='3. CONTRATO', index=False)
         
-        st.success("Tudo pronto! Relatório de Auditoria gerado com sucesso.")
-        st.download_button("📥 Baixar Auditoria", output.getvalue(), "AUDITORIA_NF_PRODUTO.xlsx")
+        st.success("Relatório de Produto corrigido e gerado!")
+        st.download_button("📥 Baixar Auditoria Corrigida", output.getvalue(), "AUDITORIA_NF_PRODUTO_FINAL.xlsx")
