@@ -3,19 +3,27 @@ import pandas as pd
 import io
 
 # Configuração da página
-st.set_page_config(page_title="Auditoria Interna NF - Produtos", layout="wide")
+st.set_page_config(page_title="Auditoria Interna NF - Produto", layout="wide")
 
-st.title("📊 Auditoria Interna NF (Notas de Produtos)")
+st.title("📊 Auditoria Interna NF (Notas de Produto)")
+st.markdown("""
+### Instruções de uso:
+1. Carregue o relatório de **NF's** - Puxar relatório do mês vigente.
+2. Carregue o relatório de **Credores**.
+3. Carregue o relatório do **Painel** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
+4. Carregue o relatório de **Pedidos** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
+5. Carregue o relatório de **Contratos** - Puxar relatório de 01/01/2020 até a data vigente.
+""")
 
 # --- UPLOAD DOS FICHEIROS ---
 col1, col2 = st.columns(2)
 with col1:
-    file_nf_prod = st.file_uploader("1. Relatório de Notas de Produtos (Arquivo BRUTO)", type=['xlsx'])
-    file_forn = st.file_uploader("2. Relatório de Credores", type=['xlsx', 'csv'])
-    file_painel = st.file_uploader("3. Relatório Painel", type=['xlsx', 'csv'])
+    file_nf_prod = st.file_uploader("1. Relatório de NF's - Fornecido a cada 10 dias no servidor.", type=['xlsx'])
+    file_forn = st.file_uploader("2. Relatório de Credores - Home / Mais Opções / Apoio / Relatórios / Pessoas / Credores.", type=['xlsx', 'csv'])
+    file_painel = st.file_uploader("3. Relatório Painel - Home / Suprimentos / Compras / Painel de Compras (Novo).", type=['xlsx', 'csv'])
 with col2:
-    file_relacao = st.file_uploader("4. Relatório Pedidos", type=['xlsx', 'csv'])
-    file_contrato = st.file_uploader("5. Relatório Contrato", type=['xlsx', 'csv'])
+    file_relacao = st.file_uploader("4. Relatório Pedidos - Home / Suprimentos / Compras / Relatórios / Pedidos de compra / Relação de Pedidos de Compra (Novo).", type=['xlsx', 'csv'])
+    file_contrato = st.file_uploader("5. Relatório Contrato - Home / Suprimentos / Contratos e Medições / Relatórios / Contratos / Emissão de Contratos.", type=['xlsx', 'csv'])
 
 # --- FUNÇÕES DE LIMPEZA ---
 def limpar_cnpj(v):
@@ -169,5 +177,5 @@ if st.button("🚀 Iniciar Auditoria"):
             aba2.to_excel(writer, sheet_name='2. PEDIDOS', index=False)
             aba3.to_excel(writer, sheet_name='3. CONTRATO', index=False)
         
-        st.success("Auditoria processada!")
-        st.download_button("📥 Baixar Relatório", output.getvalue(), "AUDITORIA_PRODUTOS_CORRIGIDA.xlsx")
+        st.success("Tudo pronto! Relatório de Auditoria gerado com sucesso.")
+        st.download_button("📥 Baixar Auditoria", output.getvalue(), "AUDITORIA_NF_PRODUTO.xlsx")
