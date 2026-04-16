@@ -36,8 +36,16 @@ def limpar_cod(v):
     return str(v).split('.')[0].strip().lstrip('0')
 
 def extrair_nf(v):
+    """
+    CORREÇÃO SOLICITADA:
+    Pega apenas o que vem antes da barra '/' e remove zeros à esquerda.
+    """
     if pd.isna(v) or str(v).strip() == "" or str(v).lower() == "nan": return ""
-    return "".join(filter(str.isdigit, str(v).split('/')[0])).strip()
+    # Pega a parte antes da barra
+    parte_antes_da_barra = str(v).split('/')[0].strip()
+    # Limpa caracteres não numéricos e remove zeros à esquerda
+    num_limpo = "".join(filter(str.isdigit, parte_antes_da_barra))
+    return num_limpo.lstrip('0')
 
 def estruturar_notas_produtos_interno(file):
     df_bruto = pd.read_excel(file, header=None)
@@ -75,7 +83,7 @@ def transformar_credor_limpo(df_bruto):
                 return (s.split(" - ")[0], " - ".join(s.split(" - ")[1:])) if " - " in s else ("", s)
             res_split = df_header['Credor'].apply(split_safe)
             df_header['Cód. Fornecedor'] = res_split.apply(lambda x: x[0])
-            df_header['Fornecedor'] = res_split.apply(lambda x: x[1])
+            df_header['Credor_Limpo'] = res_split.apply(lambda x: x[1])
             return df_header.rename(columns={'CNPJ/CPF': 'CNPJCPF'})
     return df_bruto
 
@@ -130,7 +138,7 @@ if st.button("🚀 Iniciar Auditoria"):
         
         cts_agrupados = pd.DataFrame(registros_ct).groupby('CNPJ')['Contrato'].apply(lambda x: ", ".join(sorted(set(x.astype(str).unique())))).reset_index() if registros_ct else pd.DataFrame(columns=['CNPJ', 'Contrato'])
 
-        # --- CONSTRUÇÃO DAS ABAS ---
+        # --- CONSTRUÇÃO DAS ABAS (CONFORME SEU CÓDIGO) ---
         
         # ABA 1: PAINEL
         resumo_painel = pd.merge(df_nf, painel_com_cnpj[['chave_p', 'N° da Nota fiscal']].drop_duplicates('chave_p'), left_on='chave_unica', right_on='chave_p', how='left')
@@ -163,19 +171,19 @@ if st.button("🚀 Iniciar Auditoria"):
         
         resumo_contratos['Status_CT'] = resumo_contratos.apply(status_ct, axis=1)
 
-        # SELEÇÃO FINAL
+        # SELEÇÃO DE COLUNAS PARA EXPORTAÇÃO
         cols_base = ['Núm/Série', 'CNPJ emitente', 'Emitente', 'Emissão', 'Valor']
         cols_extra = ['CNPJ Destinatário', 'Destinatário']
         
-        aba1 = resumo_painel[cols_base + ['N° da Nota fiscal', 'Status'] + cols_extra]
-        aba2 = resumo_pedidos[cols_base + ['N° da Nota fiscal', 'Nº do pedido', 'Status_Ped'] + cols_extra].rename(columns={'Status_Ped': 'Status', 'Nº do pedido': 'Pedido'})
-        aba3 = resumo_contratos[cols_base + ['N° da Nota fiscal', 'Nº do pedido', 'Contrato', 'Status_CT'] + cols_extra].rename(columns={'Status_CT': 'Status', 'Nº do pedido': 'Pedido'})
+        aba1_final = resumo_painel[cols_base + ['N° da Nota fiscal', 'Status'] + cols_extra]
+        aba2_final = resumo_pedidos[cols_base + ['N° da Nota fiscal', 'Nº do pedido', 'Status_Ped'] + cols_extra].rename(columns={'Status_Ped': 'Status', 'Nº do pedido': 'Pedido'})
+        aba3_final = resumo_contratos[cols_base + ['N° da Nota fiscal', 'Nº do pedido', 'Contrato', 'Status_CT'] + cols_extra].rename(columns={'Status_CT': 'Status', 'Nº do pedido': 'Pedido'})
 
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            aba1.to_excel(writer, sheet_name='1. PAINEL', index=False)
-            aba2.to_excel(writer, sheet_name='2. PEDIDOS', index=False)
-            aba3.to_excel(writer, sheet_name='3. CONTRATO', index=False)
+            aba1_final.to_excel(writer, sheet_name='1. PAINEL', index=False)
+            aba2_final.to_excel(writer, sheet_name='2. PEDIDOS', index=False)
+            aba3_final.to_excel(writer, sheet_name='3. CONTRATO', index=False)
         
         st.success("Tudo pronto! Relatório de Auditoria gerado com sucesso.")
         st.download_button("📥 Baixar Auditoria", output.getvalue(), "AUDITORIA_NF_PRODUTO.xlsx")
