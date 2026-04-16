@@ -5,7 +5,7 @@ import io
 # Configuração da página
 st.set_page_config(page_title="Auditoria Interna NF - Produto", layout="wide")
 
-st.title("📊 Auditoria Interna NF (Notas de Produto)")
+st.title("📊 Auditoria Interna NF - Produto")
 st.markdown("""
 ### Instruções de uso:
 1. Carregue o relatório de **NF's** - Puxar relatório do mês vigente.
