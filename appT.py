@@ -50,11 +50,11 @@ st.markdown("""
 
 col1, col2 = st.columns(2)
 with col1:
-    file_painel = st.file_uploader("1. Carregue o Painel", type=['xlsx'])
-    file_pedidos = st.file_uploader("2. Carregue os Pedidos", type=['xlsx'])
+    file_painel = st.file_uploader("1. Relatório Painel - Home / Suprimentos / Compras / Painel de Compras (Novo).", type=['xlsx'])
+    file_pedidos = st.file_uploader("2. Relatório Pedidos - Home / Suprimentos / Compras / Relatórios / Pedidos de compra / Relação de Pedidos de Compra (Novo).", type=['xlsx'])
 with col2:
-    file_titulo = st.file_uploader("3. Carregue o Titulo", type=['xlsx'])
-    file_credor = st.file_uploader("4. Carregue o Credor", type=['xlsx'])
+    file_titulo = st.file_uploader("3. Relatório Titulo - Home / Financeiro / Contas a Pagar / Relatórios / Títulos por Data.", type=['xlsx'])
+    file_credor = st.file_uploader("4. Relatório de Credores - Home / Mais Opções / Apoio / Relatórios / Pessoas / Credores.", type=['xlsx'])
 
 if st.button("🚀 Gerar Auditoria Atualizada"):
     if all([file_painel, file_pedidos, file_titulo, file_credor]):
