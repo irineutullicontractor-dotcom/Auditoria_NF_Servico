@@ -21,78 +21,83 @@ def estruturar_titulo_limpo(file):
         return pd.DataFrame()
 
     df = pd.read_excel(file, skiprows=inicio_dados)
-    # Remove colunas totalmente vazias e garante nomes de colunas sem espaços
+    # Padroniza nomes das colunas (remove espaços e garante strings)
     df.columns = [str(c).strip() for c in df.columns]
     return df
 
 def transformar_credor_limpo(file):
     """Localiza a linha 'Credor' e 'CNPJ/CPF' na planilha Credores"""
     df_bruto = pd.read_excel(file, header=None)
-    for i in range(min(20, len(df_bruto))):
+    for i in range(min(25, len(df_bruto))):
         row_values = [str(x).strip() for x in df_bruto.iloc[i].values]
         if 'Credor' in row_values and 'CNPJ/CPF' in row_values:
             df_header = df_bruto.iloc[i+1:].copy()
             df_header.columns = row_values
-            # Filtra colunas nulas ou 'nan'
             df_header = df_header.loc[:, df_header.columns.notna() & (df_header.columns != 'nan')]
             return df_header
     return pd.DataFrame()
 
-# --- INTERFACE STREAMLIT ---
+# --- INTERFACE ---
 st.set_page_config(page_title="Auditoria Título", layout="wide")
-st.title("📑 Auditoria Título - Integração de Planilhas")
+st.title("📑 Auditoria Título - Integração Final")
 
-file_painel = st.file_uploader("1. Carregue o Painel", type=['xlsx'])
-file_pedidos = st.file_uploader("2. Carregue os Pedidos", type=['xlsx'])
-file_titulo = st.file_uploader("3. Carregue o Titulo", type=['xlsx'])
-file_credor = st.file_uploader("4. Carregue o Credor", type=['xlsx'])
+col1, col2 = st.columns(2)
+with col1:
+    file_painel = st.file_uploader("1. Carregue o Painel", type=['xlsx'])
+    file_pedidos = st.file_uploader("2. Carregue os Pedidos", type=['xlsx'])
+with col2:
+    file_titulo = st.file_uploader("3. Carregue o Titulo", type=['xlsx'])
+    file_credor = st.file_uploader("4. Carregue o Credor", type=['xlsx'])
 
-if st.button("🚀 Gerar Auditoria"):
+if st.button("🚀 Gerar Auditoria Atualizada"):
     if all([file_painel, file_pedidos, file_titulo, file_credor]):
         try:
-            # 1. Processamento da planilha Credor (onde dava o erro)
+            # 1. Processar Credores
             df_c = transformar_credor_limpo(file_credor)
             if df_c.empty:
-                st.error("Não foi possível encontrar as colunas 'Credor' e 'CNPJ/CPF' na planilha de Credores.")
+                st.error("Erro: Colunas 'Credor' e 'CNPJ/CPF' não encontradas na planilha de Credores.")
                 st.stop()
-            
             df_c['CNPJ_LIMPO'] = df_c['CNPJ/CPF'].apply(limpar_cnpj)
             
-            # 2. Processamento da planilha Título
+            # 2. Processar Título
             df_t = estruturar_titulo_limpo(file_titulo)
             if df_t.empty:
-                st.error("Não foi possível encontrar a linha de início ('Item') na planilha Título.")
+                st.error("Erro: Linha de início 'Item' não encontrada na planilha Título.")
                 st.stop()
 
-            # 3. Cruzamento para trazer o CNPJ para o Título
-            # (Usamos o nome do Credor para vincular o CNPJ)
+            # 3. Cruzamento para CNPJ
             df_t = pd.merge(df_t, df_c[['Credor', 'CNPJ_LIMPO']].drop_duplicates('Credor'), on='Credor', how='left')
 
-            # 4. Lógica de Soma do Boleto (Agrupamento)
-            # Agrupa por CT/OC (Pedido), Credor e Data de Emissão
+            # 4. Lógica de Soma do Boleto
+            # Identifica as colunas de valor e título (com ou sem acento)
             col_valor = 'Valor líquido' if 'Valor líquido' in df_t.columns else df_t.columns[-1]
-            df_t['Valor boleto'] = df_t.groupby(['CT/OC', 'Credor', 'Emis.NF'])[col_valor].transform('sum')
-
-            # 5. Montagem do arquivo final
-            # Mapeamento conforme solicitado
-            resumo = pd.DataFrame()
-            resumo['Nº do pedido'] = df_t['CT/OC']
-            resumo['NF'] = df_t['Documento']
-            resumo['CNPJ'] = df_t['CNPJ_LIMPO']
-            resumo['Credor'] = df_t['Credor']
-            resumo['Data emissão'] = df_t['Emis.NF']
-            resumo['Valor'] = df_t[col_valor]
-            resumo['Valor boleto'] = df_t['Valor boleto']
-
-            # 6. Download
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                resumo.to_excel(writer, sheet_name='auditoria_titulo', index=False)
+            col_titulo_orig = 'Titulo' if 'Titulo' in df_t.columns else ('Título' if 'Título' in df_t.columns else None)
             
-            st.success("✅ Integração concluída com sucesso!")
-            st.download_button("📥 Baixar auditoria_titulo.xlsx", output.getvalue(), "auditoria_titulo.xlsx")
+            if col_titulo_orig:
+                df_t['Valor boleto'] = df_t.groupby(['CT/OC', 'Credor', 'Emis.NF'])[col_valor].transform('sum')
+
+                # 5. Montagem do arquivo final com a ordem das colunas solicitada
+                resumo = pd.DataFrame()
+                resumo['Nº do pedido'] = df_t['CT/OC']
+                resumo['NF'] = df_t['Documento']
+                resumo['CNPJ'] = df_t['CNPJ_LIMPO']
+                resumo['Credor'] = df_t['Credor']
+                resumo['Data emissão'] = df_t['Emis.NF']
+                resumo['Valor'] = df_t[col_valor]
+                resumo['Titulo'] = df_t[col_titulo_orig] # Coluna adicionada aqui
+                resumo['Valor boleto'] = df_t['Valor boleto']
+
+                # 6. Exportação
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    resumo.to_excel(writer, sheet_name='auditoria_titulo', index=False)
+                
+                st.success("✅ Arquivo 'auditoria_titulo' gerado com a coluna Titulo incluída!")
+                st.download_button("📥 Baixar Planilha", output.getvalue(), "auditoria_titulo.xlsx")
+            else:
+                st.error("Coluna 'Titulo' não encontrada na planilha de origem.")
 
         except Exception as e:
-            st.error(f"Erro durante o processamento: {e}")
+            st.error(f"Erro inesperado: {e}")
     else:
-        st.warning("Aguardando o upload de todos os arquivos.")
+        st.info("Por favor, faça o upload de todos os arquivos para prosseguir.")
