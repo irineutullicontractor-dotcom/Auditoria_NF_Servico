@@ -99,8 +99,8 @@ if st.button("🚀 Gerar Auditoria Atualizada"):
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     resumo.to_excel(writer, sheet_name='auditoria_titulo', index=False)
                 
-                st.success("✅ Arquivo 'auditoria_titulo' gerado com a coluna Titulo incluída!")
-                st.download_button("📥 Baixar Planilha", output.getvalue(), "auditoria_titulo.xlsx")
+                st.success("✅ Tudo pronto! Relatório de Auditoria gerado com sucesso.")
+                st.download_button("📥 Baixar Auditoria", output.getvalue(), "AUDITORIA_TITULO.xlsx")
             else:
                 st.error("Coluna 'Titulo' não encontrada na planilha de origem.")
 
