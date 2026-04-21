@@ -2,158 +2,91 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Auditoria Ultra Blindada", layout="wide")
-st.title("📊 Auditoria Título - Ultra Blindada")
-
-# --- UPLOAD ---
-file_forn = st.file_uploader("Credores", type=['xlsx', 'csv'])
-file_painel = st.file_uploader("Painel", type=['xlsx', 'csv'])
-file_titulo = st.file_uploader("Título", type=['xlsx'])
-
-# --- UTIL ---
+# --- FUNÇÕES DE APOIO ---
 def limpar_cnpj(v):
     if pd.isna(v): return ""
     num = "".join(filter(str.isdigit, str(v)))
-    return num.zfill(14)
+    return num.zfill(14) if len(num) > 11 else num.zfill(11)
 
-def extrair_nf(v):
-    if pd.isna(v): return ""
-    return "".join(filter(str.isdigit, str(v))).lstrip("0")
+def estruturar_titulo_limpo(file):
+    """
+    Limpa a planilha Título: localiza a linha que começa com 'Item' 
+    e extrai os dados úteis.
+    """
+    df_bruto = pd.read_excel(file, header=None)
+    
+    # Localizar onde os dados começam (Coluna A == 'Item')
+    inicio_dados = None
+    for i, row in df_bruto.iterrows():
+        if str(row[0]).strip().lower() == "item":
+            inicio_dados = i
+            break
+    
+    if inicio_dados is None:
+        return pd.DataFrame()
 
-def normalizar(df):
-    df.columns = [str(c).strip().upper() for c in df.columns]
+    # Define a linha encontrada como cabeçalho
+    df = pd.read_excel(file, skiprows=inicio_dados)
+    
+    # Selecionar apenas colunas necessárias para evitar ruído
+    cols_necessarias = ['Credor', 'Documento', 'Titulo', 'CT/OC', 'Emis.NF', 'Valor líquido']
+    # Filtro de segurança: manter apenas se as colunas existirem
+    df = df[[c for c in cols_necessarias if c in df.columns]]
+    
+    # Limpeza básica: remove linhas totalmente vazias ou que repetem o cabeçalho
+    df = df.dropna(subset=['Credor', 'Documento'])
     return df
 
-# 🔥 DETECTOR DE CABEÇALHO POR SCORE
-def detectar_header(df_raw, palavras_chave):
-    melhor_idx = None
-    melhor_score = 0
+# --- PROCESSAMENTO PRINCIPAL ---
+st.title("📑 Auditoria Título - Integração de Planilhas")
 
-    for i in range(min(30, len(df_raw))):
-        row = [str(x).upper() for x in df_raw.iloc[i].values if pd.notna(x)]
-        score = sum(any(p in cell for p in palavras_chave) for cell in row)
+# Upload dos 4 arquivos
+file_painel = st.file_uploader("1. Carregue o Painel", type=['xlsx'])
+file_pedidos = st.file_uploader("2. Carregue os Pedidos", type=['xlsx'])
+file_titulo = st.file_uploader("3. Carregue o Titulo", type=['xlsx'])
+file_credor = st.file_uploader("4. Carregue o Credor", type=['xlsx'])
 
-        if score > melhor_score:
-            melhor_score = score
-            melhor_idx = i
+if st.button("Gerar Auditoria Titulo"):
+    if all([file_painel, file_pedidos, file_titulo, file_credor]):
+        
+        # 1. Leitura e Limpeza Inicial
+        df_p = pd.read_excel(file_painel)
+        df_ped = pd.read_excel(file_pedidos)
+        df_t = estruturar_titulo_limpo(file_titulo)
+        df_c = pd.read_excel(file_credor)
 
-    return melhor_idx
+        # 2. Padronização de Chaves
+        # No Credor: CNPJ e Nome
+        df_c['CNPJ_LIMPO'] = df_c['CNPJ/CPF'].apply(limpar_cnpj)
+        
+        # No Titulo: Precisamos do CNPJ que está na planilha Credor
+        # Fazemos um merge para trazer o CNPJ para a planilha Título usando o nome do Credor
+        df_t = pd.merge(df_t, df_c[['Credor', 'CNPJ_LIMPO']], on='Credor', how='left')
 
-# 🔥 ENCONTRAR COLUNA FLEXÍVEL
-def get_col(df, nomes):
-    for col in df.columns:
-        for n in nomes:
-            if n in col:
-                return col
-    return None
+        # 3. Lógica do "Valor Boleto" (Agrupamento)
+        # Regra: CT/OC igual + Credor igual + Data Emissão igual = Mesmo Boleto
+        # Vamos criar uma coluna de soma agrupada
+        df_t['Valor boleto'] = df_t.groupby(['CT/OC', 'Credor', 'Emis.NF'])['Valor líquido'].transform('sum')
 
-# --- CREDOR ---
-def tratar_credor(file):
-    df_raw = pd.read_excel(file, header=None)
+        # 4. Integração com Pedidos e Painel para pegar o Nº do Pedido e NF
+        # Nota: Título usa 'Documento' como NF e 'CT/OC' como Pedido.
+        # Vamos preparar o DataFrame Final
+        
+        final_df = pd.DataFrame()
+        final_df['Nº do pedido'] = df_t['CT/OC']
+        final_df['NF'] = df_t['Documento']
+        final_df['CNPJ'] = df_t['CNPJ_LIMPO']
+        final_df['Credor'] = df_t['Credor']
+        final_df['Data emissão'] = df_t['Emis.NF']
+        final_df['Valor'] = df_t['Valor líquido']
+        final_df['Valor boleto'] = df_t['Valor boleto']
 
-    idx = detectar_header(df_raw, ["CREDOR", "CNPJ", "CPF"])
-
-    if idx is None:
-        st.error("❌ Não encontrou cabeçalho credor")
-        st.stop()
-
-    df = df_raw.iloc[idx+1:].copy()
-    df.columns = df_raw.iloc[idx]
-    df = normalizar(df)
-
-    col_credor = get_col(df, ["CREDOR"])
-    col_cnpj = get_col(df, ["CNPJ", "CPF"])
-
-    df = df[[col_credor, col_cnpj]].copy()
-    df.columns = ["CREDOR", "CNPJ"]
-
-    df["CREDOR"] = df["CREDOR"].astype(str).str.upper().str.strip()
-    df["CNPJ"] = df["CNPJ"].apply(limpar_cnpj)
-
-    return df
-
-# --- TITULO ---
-def tratar_titulo(file):
-    df_raw = pd.read_excel(file, header=None)
-
-    idx = detectar_header(df_raw, ["ITEM", "DOCUMENTO", "VALOR", "CREDOR"])
-
-    if idx is None:
-        st.error("❌ Não encontrou cabeçalho título")
-        st.stop()
-
-    df = df_raw.iloc[idx+1:].copy()
-    df.columns = df_raw.iloc[idx]
-    df = normalizar(df)
-
-    col_credor = get_col(df, ["CREDOR"])
-    col_doc = get_col(df, ["DOCUMENTO"])
-    col_ct = get_col(df, ["CT", "OC"])
-    col_data = get_col(df, ["EMIS", "DATA"])
-    col_valor = get_col(df, ["VALOR"])
-
-    df = df[[col_credor, col_doc, col_ct, col_data, col_valor]].copy()
-    df.columns = ["CREDOR", "DOCUMENTO", "CTOC", "DATA", "VALOR"]
-
-    df["CREDOR"] = df["CREDOR"].astype(str).str.upper().str.strip()
-    df["NF"] = df["DOCUMENTO"].apply(extrair_nf)
-    df["DATA"] = pd.to_datetime(df["DATA"], errors="coerce")
-    df["VALOR"] = pd.to_numeric(df["VALOR"], errors="coerce").fillna(0)
-
-    # 🔥 BOLETO
-    df["CHAVE"] = df["CREDOR"] + "_" + df["CTOC"].astype(str) + "_" + df["DATA"].astype(str)
-
-    soma = df.groupby("CHAVE")["VALOR"].sum().reset_index()
-    soma.columns = ["CHAVE", "VALOR_BOLETO"]
-
-    df = df.merge(soma, on="CHAVE", how="left")
-
-    return df
-
-# --- PAINEL ---
-def tratar_painel(file):
-    df = pd.read_excel(file)
-    df = normalizar(df)
-
-    col_nf = get_col(df, ["NOTA"])
-    col_pedido = get_col(df, ["PEDIDO"])
-
-    df = df[[col_nf, col_pedido]].copy()
-    df.columns = ["NF", "PEDIDO"]
-
-    df["NF"] = df["NF"].apply(extrair_nf)
-
-    return df
-
-# --- EXECUÇÃO ---
-if st.button("🚀 Rodar Auditoria Ultra"):
-
-    if all([file_forn, file_painel, file_titulo]):
-
-        df_forn = tratar_credor(file_forn)
-        df_titulo = tratar_titulo(file_titulo)
-        df_painel = tratar_painel(file_painel)
-
-        # JOIN
-        df = pd.merge(df_titulo, df_forn, on="CREDOR", how="left")
-        df = pd.merge(df, df_painel, on="NF", how="left")
-
-        auditoria = df.rename(columns={
-            "PEDIDO": "Nº do pedido",
-            "NF": "NF",
-            "CNPJ": "CNPJ",
-            "CREDOR": "Credor",
-            "DATA": "Data emissão",
-            "VALOR": "Valor",
-            "VALOR_BOLETO": "Valor boleto"
-        })[
-            ["Nº do pedido", "NF", "CNPJ", "Credor", "Data emissão", "Valor", "Valor boleto"]
-        ]
-
-        # EXPORT
+        # 5. Exportação
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            auditoria.to_excel(writer, sheet_name="TITULO", index=False)
-
-        st.success("✅ Ultra blindado concluído")
-        st.download_button("📥 Baixar", output.getvalue(), "auditoria_ultra.xlsx")
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            final_df.to_excel(writer, sheet_name='auditoria_titulo', index=False)
+        
+        st.success("Arquivo auditoria_titulo gerado!")
+        st.download_button("📥 Baixar Planilha Integrada", output.getvalue(), "auditoria_titulo.xlsx")
+    else:
+        st.error("Por favor, carregue todos os 4 arquivos.")
