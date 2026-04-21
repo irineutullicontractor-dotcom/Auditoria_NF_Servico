@@ -2,148 +2,166 @@ import streamlit as st
 import pandas as pd
 import io
 
-# Configuração
-st.set_page_config(page_title="Auditoria Interna NF - Produto", layout="wide")
-
-st.title("📊 Auditoria Interna NF - Produto")
+st.set_page_config(page_title="Auditoria Título Blindada", layout="wide")
+st.title("📊 Auditoria Título (Versão Blindada)")
 
 # --- UPLOAD ---
-col1, col2 = st.columns(2)
-with col1:
-    file_nf_prod = st.file_uploader("1. Relatório de NF's", type=['xlsx'])
-    file_forn = st.file_uploader("2. Relatório de Credores", type=['xlsx', 'csv'])
-    file_painel = st.file_uploader("3. Relatório Painel", type=['xlsx', 'csv'])
-with col2:
-    file_relacao = st.file_uploader("4. Relatório Pedidos", type=['xlsx', 'csv'])
-    file_contrato = st.file_uploader("5. Relatório Contrato", type=['xlsx', 'csv'])
-    file_titulo = st.file_uploader("6. Relatório Título", type=['xlsx'])
+file_forn = st.file_uploader("Credores", type=['xlsx', 'csv'])
+file_painel = st.file_uploader("Painel", type=['xlsx', 'csv'])
+file_titulo = st.file_uploader("Título", type=['xlsx'])
 
-# --- FUNÇÕES ---
+# --- FUNÇÕES BASE ---
 def limpar_cnpj(v):
     if pd.isna(v): return ""
     num = "".join(filter(str.isdigit, str(v)))
-    return num.zfill(14) if len(num) > 11 else num.zfill(11)
+    return num.zfill(14)
 
-def limpar_cod(v):
+def extrair_nf(v):
     if pd.isna(v): return ""
-    return str(v).split('.')[0].strip().lstrip('0')
-
-def extrair_nf_produto(v):
-    if pd.isna(v): return ""
-    v = str(v).split('/')[0]
-    v = "".join(filter(str.isdigit, v))
+    v = "".join(filter(str.isdigit, str(v)))
     return v.lstrip('0')
 
-def extrair_nf_painel(v):
-    if pd.isna(v): return ""
-    v = str(v)
-    if '/' in v:
-        v = v.split('/')[-1]
-    v = "".join(filter(str.isdigit, v))
-    return v.lstrip('0')
+def normalizar_colunas(df):
+    df.columns = [str(c).strip().upper() for c in df.columns]
+    return df
 
-# 🔥 TITULO
+def encontrar_coluna(df, possiveis_nomes):
+    for col in df.columns:
+        for nome in possiveis_nomes:
+            if nome in col:
+                return col
+    return None
+
+# --- 🔥 CREDOR BLINDADO ---
+def tratar_credor(file):
+    df_raw = pd.read_excel(file, header=None)
+
+    # encontrar linha de cabeçalho
+    header_idx = None
+    for i in range(min(20, len(df_raw))):
+        row = df_raw.iloc[i].astype(str).str.upper()
+        if any("CREDOR" in x for x in row) and any("CNPJ" in x for x in row):
+            header_idx = i
+            break
+
+    if header_idx is None:
+        st.error("❌ Não foi possível identificar cabeçalho de Credores")
+        st.stop()
+
+    df = df_raw.iloc[header_idx+1:].copy()
+    df.columns = df_raw.iloc[header_idx]
+    df = normalizar_colunas(df)
+
+    col_credor = encontrar_coluna(df, ["CREDOR"])
+    col_cnpj = encontrar_coluna(df, ["CNPJ", "CPF"])
+
+    df = df[[col_credor, col_cnpj]].copy()
+    df.columns = ["CREDOR", "CNPJ"]
+
+    df["CREDOR"] = df["CREDOR"].astype(str).str.strip().str.upper()
+    df["CNPJ"] = df["CNPJ"].apply(limpar_cnpj)
+
+    return df
+
+# --- 🔥 TITULO BLINDADO ---
 def tratar_titulo(file):
     df_raw = pd.read_excel(file, header=None)
 
     start_idx = None
     for i in range(len(df_raw)):
-        if str(df_raw.iloc[i, 0]).strip() == "Item":
+        if str(df_raw.iloc[i, 0]).strip().upper() == "ITEM":
             start_idx = i
             break
 
     if start_idx is None:
-        return pd.DataFrame()
+        st.error("❌ Não encontrou início da planilha Título (ITEM)")
+        st.stop()
 
     df = df_raw.iloc[start_idx+1:].copy()
     df.columns = df_raw.iloc[start_idx]
+    df = normalizar_colunas(df)
 
-    df = df[['Credor', 'Documento', 'Titulo', 'CT/OC', 'Emis.NF', 'Valor líquido']].copy()
+    col_credor = encontrar_coluna(df, ["CREDOR"])
+    col_doc = encontrar_coluna(df, ["DOCUMENTO"])
+    col_ct = encontrar_coluna(df, ["CT/OC", "OC"])
+    col_data = encontrar_coluna(df, ["EMIS"])
+    col_valor = encontrar_coluna(df, ["VALOR"])
 
-    df['Credor'] = df['Credor'].astype(str).str.strip()
-    df['Documento'] = df['Documento'].astype(str).str.strip()
-    df['CT/OC'] = df['CT/OC'].astype(str).str.strip()
-    df['Emis.NF'] = pd.to_datetime(df['Emis.NF'], errors='coerce')
-    df['Valor líquido'] = pd.to_numeric(df['Valor líquido'], errors='coerce').fillna(0)
+    df = df[[col_credor, col_doc, col_ct, col_data, col_valor]].copy()
+    df.columns = ["CREDOR", "DOCUMENTO", "CTOC", "DATA", "VALOR"]
 
-    df['NF'] = df['Documento'].str.replace(r'\D', '', regex=True).str.lstrip('0')
+    df["CREDOR"] = df["CREDOR"].astype(str).str.upper().str.strip()
+    df["NF"] = df["DOCUMENTO"].apply(extrair_nf)
+    df["DATA"] = pd.to_datetime(df["DATA"], errors='coerce')
+    df["VALOR"] = pd.to_numeric(df["VALOR"], errors='coerce').fillna(0)
 
-    # chave do boleto
-    df['chave_boleto'] = (
-        df['Credor'].str.upper() + "_" +
-        df['CT/OC'] + "_" +
-        df['Emis.NF'].astype(str)
-    )
+    # 🔥 REGRA DO BOLETO
+    df["CHAVE"] = df["CREDOR"] + "_" + df["CTOC"].astype(str) + "_" + df["DATA"].astype(str)
 
-    soma = df.groupby('chave_boleto')['Valor líquido'].sum().reset_index()
-    soma = soma.rename(columns={'Valor líquido': 'Valor Boleto'})
+    soma = df.groupby("CHAVE")["VALOR"].sum().reset_index()
+    soma.columns = ["CHAVE", "VALOR_BOLETO"]
 
-    df = df.merge(soma, on='chave_boleto', how='left')
+    df = df.merge(soma, on="CHAVE", how="left")
+
+    return df
+
+# --- 🔥 PAINEL BLINDADO ---
+def tratar_painel(file):
+    df = pd.read_excel(file)
+    df = normalizar_colunas(df)
+
+    col_nf = encontrar_coluna(df, ["NOTA"])
+    col_pedido = encontrar_coluna(df, ["PEDIDO"])
+
+    df = df[[col_nf, col_pedido]].copy()
+    df.columns = ["NF", "PEDIDO"]
+
+    df["NF"] = df["NF"].apply(extrair_nf)
 
     return df
 
 # --- EXECUÇÃO ---
-if st.button("🚀 Iniciar Auditoria"):
+if st.button("🚀 Rodar Auditoria"):
 
-    if all([file_nf_prod, file_forn, file_painel, file_relacao, file_contrato, file_titulo]):
+    if all([file_forn, file_painel, file_titulo]):
 
-        # --- LEITURA ---
-        df_nf = pd.read_excel(file_nf_prod)
-        df_forn = pd.read_excel(file_forn)
-        df_painel = pd.read_excel(file_painel)
-        df_relacao = pd.read_excel(file_relacao)
+        df_forn = tratar_credor(file_forn)
         df_titulo = tratar_titulo(file_titulo)
+        df_painel = tratar_painel(file_painel)
 
-        # --- CNPJ ---
-        df_forn['CNPJ/'] = df_forn['CNPJ/'].apply(limpar_cnpj)
-        df_forn['Credor_UP'] = df_forn['Credor'].astype(str).str.upper()
-
-        # --- TITULO + CNPJ ---
-        df_titulo['Credor_UP'] = df_titulo['Credor'].str.upper()
-
-        titulo_cnpj = pd.merge(
+        # --- JOIN CNPJ ---
+        df_final = pd.merge(
             df_titulo,
-            df_forn[['Credor_UP', 'CNPJ/']],
-            on='Credor_UP',
-            how='left'
+            df_forn,
+            on="CREDOR",
+            how="left"
         )
 
-        titulo_cnpj['CNPJ/'] = titulo_cnpj['CNPJ/'].apply(limpar_cnpj)
-
-        # --- PAINEL ---
-        df_painel['nf_ref_limpa'] = df_painel['N° da Nota fiscal'].apply(extrair_nf_painel)
-
-        titulo_full = pd.merge(
-            titulo_cnpj,
-            df_painel[['nf_ref_limpa', 'N° do Pedido']],
-            left_on='NF',
-            right_on='nf_ref_limpa',
-            how='left'
+        # --- JOIN PEDIDO ---
+        df_final = pd.merge(
+            df_final,
+            df_painel,
+            on="NF",
+            how="left"
         )
 
         # --- FINAL ---
-        auditoria_titulo = titulo_full.rename(columns={
-            'N° do Pedido': 'Nº do pedido',
-            'NF': 'NF',
-            'CNPJ/CPF': 'CNPJ',
-            'Credor': 'Credor',
-            'Emis.NF': 'Data emissão',
-            'Valor líquido': 'Valor',
-            'Valor Boleto': 'Valor boleto'
+        auditoria = df_final.rename(columns={
+            "PEDIDO": "Nº do pedido",
+            "NF": "NF",
+            "CNPJ": "CNPJ",
+            "CREDOR": "Credor",
+            "DATA": "Data emissão",
+            "VALOR": "Valor",
+            "VALOR_BOLETO": "Valor boleto"
         })[
-            ['Nº do pedido', 'NF', 'CNPJ', 'Credor', 'Data emissão', 'Valor', 'Valor boleto']
+            ["Nº do pedido", "NF", "CNPJ", "Credor", "Data emissão", "Valor", "Valor boleto"]
         ]
 
-        # --- EXPORTAÇÃO ---
+        # --- EXPORT ---
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            auditoria.to_excel(writer, sheet_name='TITULO', index=False)
 
-            # mantém seu padrão original (se quiser pode plugar aqui suas abas antigas)
-            auditoria_titulo.to_excel(writer, sheet_name='4. TITULO', index=False)
-
-        st.success("✅ Auditoria gerada com sucesso!")
-        st.download_button(
-            "📥 Baixar Auditoria",
-            output.getvalue(),
-            "AUDITORIA_TITULO.xlsx"
-        )
+        st.success("✅ Auditoria pronta (versão blindada)")
+        st.download_button("📥 Baixar", output.getvalue(), "auditoria_titulo.xlsx")
