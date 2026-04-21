@@ -56,7 +56,7 @@ with col2:
     file_titulo = st.file_uploader("3. Relatório Titulo - Home / Financeiro / Contas a Pagar / Relatórios / Títulos por Data.", type=['xlsx'])
     file_credor = st.file_uploader("4. Relatório de Credores - Home / Mais Opções / Apoio / Relatórios / Pessoas / Credores.", type=['xlsx'])
 
-if st.button("🚀 Gerar Auditoria Atualizada"):
+if st.button("🚀 Iniciar Auditoria"):
     if all([file_painel, file_pedidos, file_titulo, file_credor]):
         try:
             # 1. Processar Credores
