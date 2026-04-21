@@ -2,15 +2,15 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Auditoria Título Blindada", layout="wide")
-st.title("📊 Auditoria Título (Versão Blindada)")
+st.set_page_config(page_title="Auditoria Ultra Blindada", layout="wide")
+st.title("📊 Auditoria Título - Ultra Blindada")
 
 # --- UPLOAD ---
 file_forn = st.file_uploader("Credores", type=['xlsx', 'csv'])
 file_painel = st.file_uploader("Painel", type=['xlsx', 'csv'])
 file_titulo = st.file_uploader("Título", type=['xlsx'])
 
-# --- FUNÇÕES BASE ---
+# --- UTIL ---
 def limpar_cnpj(v):
     if pd.isna(v): return ""
     num = "".join(filter(str.isdigit, str(v)))
@@ -18,84 +18,89 @@ def limpar_cnpj(v):
 
 def extrair_nf(v):
     if pd.isna(v): return ""
-    v = "".join(filter(str.isdigit, str(v)))
-    return v.lstrip('0')
+    return "".join(filter(str.isdigit, str(v))).lstrip("0")
 
-def normalizar_colunas(df):
+def normalizar(df):
     df.columns = [str(c).strip().upper() for c in df.columns]
     return df
 
-def encontrar_coluna(df, possiveis_nomes):
+# 🔥 DETECTOR DE CABEÇALHO POR SCORE
+def detectar_header(df_raw, palavras_chave):
+    melhor_idx = None
+    melhor_score = 0
+
+    for i in range(min(30, len(df_raw))):
+        row = [str(x).upper() for x in df_raw.iloc[i].values if pd.notna(x)]
+        score = sum(any(p in cell for p in palavras_chave) for cell in row)
+
+        if score > melhor_score:
+            melhor_score = score
+            melhor_idx = i
+
+    return melhor_idx
+
+# 🔥 ENCONTRAR COLUNA FLEXÍVEL
+def get_col(df, nomes):
     for col in df.columns:
-        for nome in possiveis_nomes:
-            if nome in col:
+        for n in nomes:
+            if n in col:
                 return col
     return None
 
-# --- 🔥 CREDOR BLINDADO ---
+# --- CREDOR ---
 def tratar_credor(file):
     df_raw = pd.read_excel(file, header=None)
 
-    # encontrar linha de cabeçalho
-    header_idx = None
-    for i in range(min(20, len(df_raw))):
-        row = df_raw.iloc[i].astype(str).str.upper()
-        if any("CREDOR" in x for x in row) and any("CNPJ" in x for x in row):
-            header_idx = i
-            break
+    idx = detectar_header(df_raw, ["CREDOR", "CNPJ", "CPF"])
 
-    if header_idx is None:
-        st.error("❌ Não foi possível identificar cabeçalho de Credores")
+    if idx is None:
+        st.error("❌ Não encontrou cabeçalho credor")
         st.stop()
 
-    df = df_raw.iloc[header_idx+1:].copy()
-    df.columns = df_raw.iloc[header_idx]
-    df = normalizar_colunas(df)
+    df = df_raw.iloc[idx+1:].copy()
+    df.columns = df_raw.iloc[idx]
+    df = normalizar(df)
 
-    col_credor = encontrar_coluna(df, ["CREDOR"])
-    col_cnpj = encontrar_coluna(df, ["CNPJ", "CPF"])
+    col_credor = get_col(df, ["CREDOR"])
+    col_cnpj = get_col(df, ["CNPJ", "CPF"])
 
     df = df[[col_credor, col_cnpj]].copy()
     df.columns = ["CREDOR", "CNPJ"]
 
-    df["CREDOR"] = df["CREDOR"].astype(str).str.strip().str.upper()
+    df["CREDOR"] = df["CREDOR"].astype(str).str.upper().str.strip()
     df["CNPJ"] = df["CNPJ"].apply(limpar_cnpj)
 
     return df
 
-# --- 🔥 TITULO BLINDADO ---
+# --- TITULO ---
 def tratar_titulo(file):
     df_raw = pd.read_excel(file, header=None)
 
-    start_idx = None
-    for i in range(len(df_raw)):
-        if str(df_raw.iloc[i, 0]).strip().upper() == "ITEM":
-            start_idx = i
-            break
+    idx = detectar_header(df_raw, ["ITEM", "DOCUMENTO", "VALOR", "CREDOR"])
 
-    if start_idx is None:
-        st.error("❌ Não encontrou início da planilha Título (ITEM)")
+    if idx is None:
+        st.error("❌ Não encontrou cabeçalho título")
         st.stop()
 
-    df = df_raw.iloc[start_idx+1:].copy()
-    df.columns = df_raw.iloc[start_idx]
-    df = normalizar_colunas(df)
+    df = df_raw.iloc[idx+1:].copy()
+    df.columns = df_raw.iloc[idx]
+    df = normalizar(df)
 
-    col_credor = encontrar_coluna(df, ["CREDOR"])
-    col_doc = encontrar_coluna(df, ["DOCUMENTO"])
-    col_ct = encontrar_coluna(df, ["CT/OC", "OC"])
-    col_data = encontrar_coluna(df, ["EMIS"])
-    col_valor = encontrar_coluna(df, ["VALOR"])
+    col_credor = get_col(df, ["CREDOR"])
+    col_doc = get_col(df, ["DOCUMENTO"])
+    col_ct = get_col(df, ["CT", "OC"])
+    col_data = get_col(df, ["EMIS", "DATA"])
+    col_valor = get_col(df, ["VALOR"])
 
     df = df[[col_credor, col_doc, col_ct, col_data, col_valor]].copy()
     df.columns = ["CREDOR", "DOCUMENTO", "CTOC", "DATA", "VALOR"]
 
     df["CREDOR"] = df["CREDOR"].astype(str).str.upper().str.strip()
     df["NF"] = df["DOCUMENTO"].apply(extrair_nf)
-    df["DATA"] = pd.to_datetime(df["DATA"], errors='coerce')
-    df["VALOR"] = pd.to_numeric(df["VALOR"], errors='coerce').fillna(0)
+    df["DATA"] = pd.to_datetime(df["DATA"], errors="coerce")
+    df["VALOR"] = pd.to_numeric(df["VALOR"], errors="coerce").fillna(0)
 
-    # 🔥 REGRA DO BOLETO
+    # 🔥 BOLETO
     df["CHAVE"] = df["CREDOR"] + "_" + df["CTOC"].astype(str) + "_" + df["DATA"].astype(str)
 
     soma = df.groupby("CHAVE")["VALOR"].sum().reset_index()
@@ -105,13 +110,13 @@ def tratar_titulo(file):
 
     return df
 
-# --- 🔥 PAINEL BLINDADO ---
+# --- PAINEL ---
 def tratar_painel(file):
     df = pd.read_excel(file)
-    df = normalizar_colunas(df)
+    df = normalizar(df)
 
-    col_nf = encontrar_coluna(df, ["NOTA"])
-    col_pedido = encontrar_coluna(df, ["PEDIDO"])
+    col_nf = get_col(df, ["NOTA"])
+    col_pedido = get_col(df, ["PEDIDO"])
 
     df = df[[col_nf, col_pedido]].copy()
     df.columns = ["NF", "PEDIDO"]
@@ -121,7 +126,7 @@ def tratar_painel(file):
     return df
 
 # --- EXECUÇÃO ---
-if st.button("🚀 Rodar Auditoria"):
+if st.button("🚀 Rodar Auditoria Ultra"):
 
     if all([file_forn, file_painel, file_titulo]):
 
@@ -129,24 +134,11 @@ if st.button("🚀 Rodar Auditoria"):
         df_titulo = tratar_titulo(file_titulo)
         df_painel = tratar_painel(file_painel)
 
-        # --- JOIN CNPJ ---
-        df_final = pd.merge(
-            df_titulo,
-            df_forn,
-            on="CREDOR",
-            how="left"
-        )
+        # JOIN
+        df = pd.merge(df_titulo, df_forn, on="CREDOR", how="left")
+        df = pd.merge(df, df_painel, on="NF", how="left")
 
-        # --- JOIN PEDIDO ---
-        df_final = pd.merge(
-            df_final,
-            df_painel,
-            on="NF",
-            how="left"
-        )
-
-        # --- FINAL ---
-        auditoria = df_final.rename(columns={
+        auditoria = df.rename(columns={
             "PEDIDO": "Nº do pedido",
             "NF": "NF",
             "CNPJ": "CNPJ",
@@ -158,10 +150,10 @@ if st.button("🚀 Rodar Auditoria"):
             ["Nº do pedido", "NF", "CNPJ", "Credor", "Data emissão", "Valor", "Valor boleto"]
         ]
 
-        # --- EXPORT ---
+        # EXPORT
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            auditoria.to_excel(writer, sheet_name='TITULO', index=False)
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            auditoria.to_excel(writer, sheet_name="TITULO", index=False)
 
-        st.success("✅ Auditoria pronta (versão blindada)")
-        st.download_button("📥 Baixar", output.getvalue(), "auditoria_titulo.xlsx")
+        st.success("✅ Ultra blindado concluído")
+        st.download_button("📥 Baixar", output.getvalue(), "auditoria_ultra.xlsx")
