@@ -39,7 +39,14 @@ def transformar_credor_limpo(file):
 
 # --- INTERFACE ---
 st.set_page_config(page_title="Auditoria Título", layout="wide")
-st.title("📑 Auditoria Título - Integração Final")
+st.title("📑 Auditoria Interna - Títulos")
+st.markdown("""
+### Instruções de uso:
+1. Carregue o relatório do **Painel** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
+2. Carregue o relatório de **Pedidos** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
+3. Carregue o relatório de **Títulos** - Puxar relatório de no mínimo 90 dias atrás até a data vigente.
+4. Carregue o relatório de **Credores**.
+""")
 
 col1, col2 = st.columns(2)
 with col1:
