@@ -95,7 +95,7 @@ if st.button("🚀 Iniciar Auditoria"):
         df_titulo = tratar_titulo(file_titulo)
 
         # --- CNPJ ---
-        df_forn['CNPJ/CPF'] = df_forn['CNPJ/CPF'].apply(limpar_cnpj)
+        df_forn['CNPJ/'] = df_forn['CNPJ/'].apply(limpar_cnpj)
         df_forn['Credor_UP'] = df_forn['Credor'].astype(str).str.upper()
 
         # --- TITULO + CNPJ ---
@@ -103,12 +103,12 @@ if st.button("🚀 Iniciar Auditoria"):
 
         titulo_cnpj = pd.merge(
             df_titulo,
-            df_forn[['Credor_UP', 'CNPJ/CPF']],
+            df_forn[['Credor_UP', 'CNPJ/']],
             on='Credor_UP',
             how='left'
         )
 
-        titulo_cnpj['CNPJ/CPF'] = titulo_cnpj['CNPJ/CPF'].apply(limpar_cnpj)
+        titulo_cnpj['CNPJ/'] = titulo_cnpj['CNPJ/'].apply(limpar_cnpj)
 
         # --- PAINEL ---
         df_painel['nf_ref_limpa'] = df_painel['N° da Nota fiscal'].apply(extrair_nf_painel)
@@ -125,7 +125,7 @@ if st.button("🚀 Iniciar Auditoria"):
         auditoria_titulo = titulo_full.rename(columns={
             'N° do Pedido': 'Nº do pedido',
             'NF': 'NF',
-            'CNPJCPF': 'CNPJ',
+            'CNPJ/CPF': 'CNPJ',
             'Credor': 'Credor',
             'Emis.NF': 'Data emissão',
             'Valor líquido': 'Valor',
